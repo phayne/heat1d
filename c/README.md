@@ -32,4 +32,4 @@ Usage:
     [albedo] -- solar bolometric albedo of surface
 
 ```
-In this implementation, both the H-parameter and thermal inertia can be adjusted. Standard values for these are 0.06 [m] and 55 [J m$^{-2}$ K$^{-1}$ s$^{-1/2}$].
+In this implementation, both the H-parameter and thermal inertia can be adjusted. Standard values for these are 0.06 [m] and 55 [J.m-2.K-1.s-1/2].
