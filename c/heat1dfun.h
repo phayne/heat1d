@@ -57,7 +57,7 @@
 // Scale factor for adjusting thermal inertia
 // This is the baseline thermal inertia, calculated 
 // from KD, RHOD, and heat capacity at 250 K
-#define TI0 50
+#define TI0 55
 
 // Constants for Vasavada et al (1999) model of radiative conduction
 // ALTERNATE FUNCTION: B = (chi*R350)*Kc
