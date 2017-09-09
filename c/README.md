@@ -21,7 +21,7 @@ With these files in the same directory, compile the program using a standard com
 The `-lm` flag tells `gcc` to link the mathematics standard library, and the executable program is called `heat1d_moon` in this case. To display the usage, simply run the program with no input arguments:
 
 ```
-] ./heat1d_moon
+./heat1d_moon
 
 Usage:
   heat1d_moon [lat] [T.I.] [H] [albedo]
