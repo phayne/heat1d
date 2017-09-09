@@ -28,8 +28,8 @@ Usage:
 
     [lat] -- latitude in degrees
     [T.I.] -- thermal inertia at 273 K [SI units] (55 for typical regolith)
-    [H] -- H-parameter = scale height of TI increase (0.06 is typical)
+    [H] -- H-parameter = scale height of TI increase (0.07 is typical)
     [albedo] -- solar bolometric albedo of surface
 
 ```
-In this implementation, both the H-parameter and thermal inertia can be adjusted. Standard values for these are 0.06 [m] and 55 [J.m-2.K-1.s-1/2].
+In this implementation, both the H-parameter and thermal inertia can be adjusted. Standard values for these are 0.07 [m] and 55 [J.m-2.K-1.s-1/2].
