@@ -14,3 +14,21 @@ First, download the following files and place them in your own directory:
 * `orbitfun.c` - subroutines for orbital elements and related functions
 * `orbitfun.h` - header file for `orbitfun.c`
 
+With these files in the same directory, compile the program using a standard compiler such as `gcc`:
+
+`gcc -lm heat1d_moon.c heat1dfun.c orbitfun.c -o heat1d`
+
+The `-lm` flag tells `gcc` to link the mathematics standard library, and the executable program is called `heat1d` in this case. To display the usage, simply run the program with no input arguments:
+
+```
+heat1d
+
+Usage:
+  heat1d_moon [lat] [T.I.] [H] [albedo]
+
+    [lat] -- latitude in degrees
+    [T.I.] -- thermal inertia at 273 K [SI units] (50 for typical regolith)
+    [H] -- H-parameter = scale height of TI increase (0.06 is typical)
+    [albedo] -- solar bolometric albedo of surface
+
+```
