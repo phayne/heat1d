@@ -16,12 +16,12 @@ First, download the following files and place them in your own directory:
 
 With these files in the same directory, compile the program using a standard compiler such as `gcc`:
 
-`gcc -lm heat1d_moon.c heat1dfun.c orbitfun.c -o heat1d`
+`gcc -lm heat1d_moon.c heat1dfun.c orbitfun.c -o heat1d_moon`
 
-The `-lm` flag tells `gcc` to link the mathematics standard library, and the executable program is called `heat1d` in this case. To display the usage, simply run the program with no input arguments:
+The `-lm` flag tells `gcc` to link the mathematics standard library, and the executable program is called `heat1d_moon` in this case. To display the usage, simply run the program with no input arguments:
 
 ```
-heat1d
+] ./heat1d_moon
 
 Usage:
   heat1d_moon [lat] [T.I.] [H] [albedo]
