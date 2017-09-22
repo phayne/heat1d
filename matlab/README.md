@@ -84,4 +84,4 @@ MEX completed successfully.
 >> ylabel('Temperature (K)','interpreter','latex')
 >> set(gca,'xtick',0:6:24,'xticklabel',{'12:00','18:00','00:00','06:00','12:00'})
 ```
-![Example diurnal temperature curve for the Moon](figures/example_lunar_equatorial_tsurf.png?raw=true width=150)
+![Example diurnal temperature curve for the Moon](figures/example_lunar_equatorial_tsurf.png?raw=true | width=150)
