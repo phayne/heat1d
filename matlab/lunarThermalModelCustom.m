@@ -12,7 +12,7 @@ function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, loctime, ...
 %   rhod = deep density in kg.m-3 [1]
 %   ks = surface conductivity in W.m-1.K-1 [1]
 %   kd = conductivity at depth in W.m-1.K-1 [1]
-%   loctime = local time in (lunar) hours PAST NOON [n]
+%   loctime = local time in (lunar) hours PAST NOON [1xn]
 %   depth = depth in meters [mx1]
 %   latitude = unsigned latitude in degrees [1]
 %   albedo = albedo [1]
@@ -21,6 +21,7 @@ function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, loctime, ...
 %
 % Author: Paul O. Hayne (Jet Propulsion Laboratory)
 % Date created: September, 2016
+% Modified: September, 2017
 % 
 % File dependencies: Requires MATLAB "mex" file containing main thermal
 % model, written in C. At the moment, this is called "heat1d_mex.c". There
