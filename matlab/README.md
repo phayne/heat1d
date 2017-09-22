@@ -8,7 +8,7 @@ Here are instructions for installing, running, and customizing the model.
 
 First, download the following files and place them in your own directory:
 
-* `lunarThermalModelCustom.m` - wrapper script in MATLAB language
+* [`lunarThermalModelCustom.m`](https://github.com/phayne/heat1d/blob/master/matlab/lunarThermalModelCustom.m) - wrapper script in MATLAB language
 * `heat1d_mex.c` - the core program, including necessary MATLAB MEX-file headers and options, functions, etc.
 * `heat1dfun.h` - header file for `heat1dfun.h` containing function prototypes
 * `orbitfun.h` - header file for `orbitfun.c`
