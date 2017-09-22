@@ -23,3 +23,35 @@ Building with 'Xcode with Clang'.
 MEX completed successfully.
 ```
 This should generate a file called `heat1d_mex.mex---`, where `---` is a suffix indicating your operating system. The output above may change depending on your operating system and compiler settings.
+
+To run the model, you can call it directly as follows, or use the wrapper script [`lunarThermalModelCustom.m`](https://github.com/phayne/heat1d/blob/master/matlab/lunarThermalModelCustom.m).
+
+```
+>> ks = 7.4e-4; kd = 3.4e-3; rhos = 1100; rhod = 1800; H = 0.068; % Typical thermophysical parameters
+>> local_time = 0:0.01:24; % local time with noon = 0
+>> albedo = 0.12; % typical surface albedo = 0.12
+>> latitude = 0; % equator
+>> [t, z] = heat1d_mex(H, rhos, rhod, ks, kd, latitude, albedo, local_time);
+```
+The main purpose of the wrapper script is to do some error checking, and allow the use of arbitrary z-values.
+
+### Examples
+
+```
+>> mex ~/research/thermal_model/code/matlab/heat1d_mex.c
+Building with 'Xcode with Clang'.
+MEX completed successfully.
+>> % First set all of the thermophysical parameters, boundary conditions, and time:
+>> ks = 7.4e-4; kd = 3.4e-3; rhos = 1100; rhod = 1800; H = 0.068; % Typical thermophysical parameters
+>> local_time = 0:0.01:24; % local time with noon = 0
+>> albedo = 0.12; % typical surface albedo = 0.12
+>> z = 0; % surface
+>> latitude = 0; % equator
+>> % Run the model:
+>> t = lunarThermalModelCustom(H, rhos, rhod, ks, kd, local_time, z, latitude, albedo);
+>> plot(local_time, t)
+>> axis([0, 24, 50, 400])
+>> xlabel('Local Time','interpreter','latex')
+>> ylabel('Temperature (K)','interpreter','latex')
+>> set(gca,'xtick',0:6:24,'xticklabel',{'12:00','18:00','00:00','06:00','12:00'})
+```
