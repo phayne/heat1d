@@ -10,9 +10,9 @@ First, download the following files and place them in your own directory:
 
 * `heat1d_moon.c` - the core program
 * `heat1dfun.c` - subroutines used by the core program
-* `heat1dfun.h` - header file for `heat1dfun.h` containing function declarations
+* `heat1dfun.h` - header file for `heat1dfun.h` containing function prototypes
 * `orbitfun.c` - subroutines for orbital elements and related functions
-* `orbitfun.h` - header file for `orbitfun.c`
+* `orbitfun.h` - header file containing function prototypes for `orbitfun.c`
 
 With these files in the same directory, compile the program using a standard compiler such as `gcc`:
 
