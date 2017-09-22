@@ -14,6 +14,6 @@ First, download the following files and place them in your own directory:
 
 Open MATLAB. Locate the directory `mydir/` containing these files, and compile the program using:
 
-`>> mex ~/research/thermal_model/code/matlab/heat1d_mex.c
-Building with 'Xcode with Clang'.
-MEX completed successfully.`
+`>> mex ~/research/thermal_model/code/matlab/heat1d_mex.c`
+`Building with 'Xcode with Clang'.`
+`MEX completed successfully.`
