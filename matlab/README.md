@@ -9,9 +9,9 @@ Here are instructions for installing, running, and customizing the model.
 First, download the following files and place them in your own directory:
 
 * [`lunarThermalModelCustom.m`](https://github.com/phayne/heat1d/blob/master/matlab/lunarThermalModelCustom.m) - wrapper script in MATLAB language
-* `heat1d_mex.c` - the core program, including necessary MATLAB MEX-file headers and options, functions, etc.
-* `heat1dfun.h` - header file for `heat1dfun.h` containing function prototypes
-* `orbitfun.h` - header file for `orbitfun.c`
+* [`heat1d_mex.c`](https://github.com/phayne/heat1d/blob/master/matlab/heat1d_mex.c) - the core program, including necessary MATLAB MEX-file headers and options, functions, etc.
+* [`heat1dfun.h`](https://github.com/phayne/heat1d/blob/master/matlab/heat1dfun.h) - header file for `heat1dfun.h` containing function prototypes
+* [`orbitfun.h`](https://github.com/phayne/heat1d/blob/master/matlab/orbitfun.h) - header file for `orbitfun.c`
 
 In order to compile and run the code, you will need a [MATLAB-supported compiler](https://www.mathworks.com/support/compilers.html) installed on your system. There are freely available C-compilers for Windows, Mac OS-X, and Unix. Once the compiler is properly installed, you may need to [change MATLAB's default compiler](https://www.mathworks.com/help/matlab/matlab_external/changing-default-compiler.html) and other `mex` settings.
 
