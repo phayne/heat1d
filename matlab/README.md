@@ -2,7 +2,7 @@
 Thermal model for planetary applications
 
 ## MATLAB MEX-version
-This is the MATLAB `MEX`-file implementation of the thermal code. It is based on the original C-code, adapted to be compiled and executed from within the MATLAB environment.
+This is the MATLAB "MEX"-file implementation of the thermal code. It is based on the original C-code, adapted to be compiled and executed from within the MATLAB environment.
 
 Here are instructions for installing, running, and customizing the model.
 
