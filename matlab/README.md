@@ -12,13 +12,13 @@ First, download the following files and place them in your own directory:
 * `heat1dfun.h` - header file for `heat1dfun.h` containing function prototypes
 * `orbitfun.h` - header file for `orbitfun.c`
 
-In order to compile and run the code, you will need a [MATLAB-supported compiler](https://www.mathworks.com/support/compilers.html) installed on your system.
+In order to compile and run the code, you will need a [MATLAB-supported compiler](https://www.mathworks.com/support/compilers.html) installed on your system. There are freely available C-compilers for Windows, Mac OS-X, and Unix. Once the compiler is properly installed, you may need to [change MATLAB's default compiler](https://www.mathworks.com/help/matlab/matlab_external/changing-default-compiler.html) and other `mex` settings.
 
-Open MATLAB. From MATLAB's command line, locate the directory `mydir/` containing these files, and compile the program using:
+Next, open MATLAB. From MATLAB's command line, locate the directory `mydir/` containing these files, and compile the program using the following command:
 
 ```
 >> mex mydir/heat1d_mex.c
 Building with 'Xcode with Clang'.
 MEX completed successfully.
 ```
-This should generate a file called `heat1d_mex.mex---`, where `---` is a suffix indicating your operating system.
+This should generate a file called `heat1d_mex.mex---`, where `---` is a suffix indicating your operating system. The output above may change depending on your operating system and compiler settings.
