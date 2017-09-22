@@ -24,7 +24,7 @@ MEX completed successfully.
 ```
 This should generate a file called `heat1d_mex.mex---`, where `---` is a suffix indicating your operating system. The output above may change depending on your operating system and compiler settings.
 
-To run the model, you can call it directly as follows, or use the wrapper script [`lunarThermalModelCustom.m`](https://github.com/phayne/heat1d/blob/master/matlab/lunarThermalModelCustom.m).
+To run the model, you can call it directly as follows:
 
 ```
 >> ks = 7.4e-4; kd = 3.4e-3; rhos = 1100; rhod = 1800; H = 0.068; % Typical thermophysical parameters
@@ -33,7 +33,7 @@ To run the model, you can call it directly as follows, or use the wrapper script
 >> latitude = 0; % equator
 >> [t, z] = heat1d_mex(H, rhos, rhod, ks, kd, latitude, albedo, local_time);
 ```
-The main purpose of the wrapper script is to do some error checking, and allow the use of arbitrary z-values.
+The main purpose of the wrapper script is to do some error checking, and allow the use of arbitrary z-values. Some examples are provided below.
 
 ### Examples
 
@@ -41,6 +41,35 @@ The main purpose of the wrapper script is to do some error checking, and allow t
 >> mex ~/research/thermal_model/code/matlab/heat1d_mex.c
 Building with 'Xcode with Clang'.
 MEX completed successfully.
+>> help lunarThermalModelCustom
+  function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, loctime, ...
+                                          depth, latitude, albedo )
+  -------------------------------------------------------------------------
+  Lunar thermal model for calculating temperatures using standard
+  thermophysical properties.
+  Inputs [dimensions]:
+    H = H-parameter in meters [1]
+    rhos = surface density in kg.m-3 [1]
+    rhod = deep density in kg.m-3 [1]
+    ks = surface conductivity in W.m-1.K-1 [1]
+    kd = conductivity at depth in W.m-1.K-1 [1]
+    loctime = local time in (lunar) hours PAST NOON [1xn]
+    depth = depth in meters [mx1]
+    latitude = unsigned latitude in degrees [1]
+    albedo = albedo [1]
+  Outputs [dimensions]:
+    t = temperature in Kelvin [mxn]
+ 
+  Author: Paul O. Hayne (Jet Propulsion Laboratory)
+  Date created: September, 2016
+  Modified: September, 2017
+  
+  File dependencies: Requires MATLAB "mex" file containing main thermal
+  model, written in C. At the moment, this is called "heat1d_mex.c". There
+  are some other dependencies provided in the header of that file.
+ 
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+>>
 >> % First set all of the thermophysical parameters, boundary conditions, and time:
 >> ks = 7.4e-4; kd = 3.4e-3; rhos = 1100; rhod = 1800; H = 0.068; % Typical thermophysical parameters
 >> local_time = 0:0.01:24; % local time with noon = 0
