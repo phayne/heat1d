@@ -12,6 +12,8 @@ First, download the following files and place them in your own directory:
 * `heat1dfun.h` - header file for `heat1dfun.h` containing function prototypes
 * `orbitfun.h` - header file for `orbitfun.c`
 
+In order to compile and run the code, you will need a [MATLAB-supported compiler](https://www.mathworks.com/support/compilers.html) installed on your system.
+
 Open MATLAB. From MATLAB's command line, locate the directory `mydir/` containing these files, and compile the program using:
 
 ```
