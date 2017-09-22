@@ -12,10 +12,11 @@ First, download the following files and place them in your own directory:
 * `heat1dfun.h` - header file for `heat1dfun.h` containing function prototypes
 * `orbitfun.h` - header file for `orbitfun.c`
 
-Open MATLAB. Locate the directory `mydir/` containing these files, and compile the program using:
+Open MATLAB. From MATLAB's command line, locate the directory `mydir/` containing these files, and compile the program using:
 
-`>> mex ~/research/thermal_model/code/matlab/heat1d_mex.c`
-
-`Building with 'Xcode with Clang'.`
-
-`MEX completed successfully.`
+```
+>> mex mydir/heat1d_mex.c
+Building with 'Xcode with Clang'.
+MEX completed successfully.
+```
+This should generate a file called `heat1d_mex.mex---`, where `---` is a suffix indicating your operating system.
