@@ -12,6 +12,7 @@ function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, chi, ...
 %   rhod = deep density in kg.m-3 [1]
 %   ks = surface conductivity in W.m-1.K-1 [1]
 %   kd = conductivity at depth in W.m-1.K-1 [1]
+%   chi = radiative conductivity parameter [unitless]
 %   loctime = local time in (lunar) hours PAST NOON [1xn]
 %   depth = depth in meters [mx1]
 %   latitude = unsigned latitude in degrees [1]
@@ -26,6 +27,16 @@ function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, chi, ...
 % File dependencies: Requires MATLAB "mex" file containing main thermal
 % model, written in C. At the moment, this is called "heat1d_mex.c". There
 % are some other dependencies provided in the header of that file.
+%
+% More information:
+% 
+% https://github.com/phayne/heat1d 
+%
+% Hayne, P. O., Band?eld, J. L., Siegler, M.A., Vasavada, A. R., Ghent, 
+% R. R., Williams,J.-P., ? Paige, D. A. (2017). Global rego-lith 
+% thermophysical properties of theMoon from the Diviner LunarRadiometer 
+% Experiment. Journal ofGeophysical Research: Planets, 122,2371?2400. 
+% https://doi.org/10.1002/2017JE005387
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -91,7 +102,7 @@ t = zeros(m,n);
 % H = 0.06;       % H-parameter [m]
 % ks = 8.1e-04;   % thermal conductivity of surface [W.m-1.K-1]
 % kd = 3.3e-03;   % thermal conductivity at depth [W.m-1.K-1]
-% chi = 2.7; % radiative conductivity [unitless]
+% chi = 2.7;      % radiative conductivity [unitless]
 
 % %%%%%%%%%%%%%%%%%%%%
 % Run thermal model %
