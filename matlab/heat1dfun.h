@@ -60,7 +60,7 @@
 #define P4  8.9093e-009
 
 // Scale factor for adjusting thermal inertia
-// This is the baseline thermal inertia, calculated 
+// This is the baseline thermal inertia, calculated
 // from KD, RHOD, and heat capacity at 250 K
 #define TI0 60
 
@@ -135,6 +135,7 @@ typedef struct {
 typedef struct {
   int nlayers;
   double albedo, emis, latitude, slopecos, slopesin, az, dsquared;
+  double chi;
   double rau, rotperiod, obliq;
   double surfflux, esub;
   double hourangle;
@@ -174,7 +175,7 @@ double albedoModel( double a, double theta );
 double heatCap( double t );
 void heatCapProf( profileT *p );
 double thermCondConst( double rho, double rhos, double rhod, double ks, double kd );
-double radParam( double rho );
+double radParam( double k, double chi );
 void radParamProf( profileT *p );
 double thermCond( double kc, double b, double t );
 void thermCondProf( profileT *p );
@@ -184,7 +185,7 @@ int countLines( FILE *fpin );
 int twoLayerProf( profileT *p, double ztop, double zbot,
                   double rhotop, double rhobot, double tinit,
                   int nlayers );
-void updateOrbit( double dtime, double *nu, double *dec, double *r, 
+void updateOrbit( double dtime, double *nu, double *dec, double *r,
 		  double rau, double obliq );
 double iceSubRate( double t, double z );
 double iceSubRateVacuum( double t );

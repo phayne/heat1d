@@ -1,8 +1,8 @@
-function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, loctime, ...
-                                        depth, latitude, albedo )
+function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, chi, ...
+                                      loctime, depth, latitude, albedo )
 
-% function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, loctime, ...
-%                                         depth, latitude, albedo )
+% function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, chi, ...
+%                                      loctime, depth, latitude, albedo )
 % -------------------------------------------------------------------------
 % Lunar thermal model for calculating temperatures using standard
 % thermophysical properties.
@@ -33,7 +33,7 @@ function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, loctime, ...
 % Help message: %
 % %%%%%%%%%%%%%%%
 
-if (nargin ~= 9)
+if (nargin ~= 10)
     help(sprintf('%s',mfilename))
     return
 end
@@ -91,6 +91,7 @@ t = zeros(m,n);
 % H = 0.06;       % H-parameter [m]
 % ks = 8.1e-04;   % thermal conductivity of surface [W.m-1.K-1]
 % kd = 3.3e-03;   % thermal conductivity at depth [W.m-1.K-1]
+% chi = 2.7; % radiative conductivity [unitless]
 
 % %%%%%%%%%%%%%%%%%%%%
 % Run thermal model %
@@ -99,7 +100,7 @@ t = zeros(m,n);
 % Optionally print time to execute program
 %fprintf('Running model...\n')
 %c = cputime();
-[t0, z] = heat1d_mex(H, rhos, rhod, ks, kd, latitude, albedo, loctime);
+[t0, z] = heat1d_mex(H, rhos, rhod, ks, kd, chi, latitude, albedo, loctime);
 %fprintf('             ...done in: %f seconds\n',cputime()-c)
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

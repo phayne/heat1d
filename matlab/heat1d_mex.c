@@ -1,6 +1,6 @@
 /*
  * FILE: heat1d_mex.c
- * PURPOSE: Main thermal model code and various supporting 
+ * PURPOSE: Main thermal model code and various supporting
  *          functions (some not used presently).
  * ----> THIS VERSION IS A "MEX" FILE FOR RUNNING IN MATLAB
  *
@@ -12,7 +12,7 @@
 
 /*=================================================================
  *
- * This is a MEX-file for MATLAB.  
+ * This is a MEX-file for MATLAB.
  *
  *=================================================================*/
 
@@ -43,6 +43,8 @@
 // This can be adjusted to decrease equilibration time at depth
 #define ZTSCALE   0.1
 
+#define CUTOFF 0.000001 // kludge to fix rounding error in timestep
+
 //#define ALBEDO 0.12
 
 /* *********************
@@ -62,18 +64,19 @@ int tiProfile( profileT *p, double h, double latitude, double ti );
  * MAIN PROGRAM:
  */
 
-void mexFunction( int nlhs, mxArray *plhs[], 
+void mexFunction( int nlhs, mxArray *plhs[],
 		  int nrhs, const mxArray *prhs[] )
-{ 
+{
     int i, nout, m;
-    double *beta, *ohour, *otemp, *odepth, rhod, rhos, ks, kd, h, albedo, latitude, slope;
+    double *beta, *ohour, *otemp, *odepth;
+		double rhod, rhos, ks, kd, chi, h, albedo, latitude, slope;
     profileT *p;
-    
+
     /* Check for proper number of arguments */
-    if (nrhs != 8) { 
-	mexErrMsgTxt("8 input arguments required."); 
+    if (nrhs != 9) {
+	mexErrMsgTxt("9 input arguments required.");
     } else if (nlhs > 2) {
-	mexErrMsgTxt("Improper number of output arguments: 1 or 2 required."); 
+	mexErrMsgTxt("Improper number of output arguments: 1 or 2 required.");
     }
 
     /* Check length of arrays */
@@ -87,28 +90,32 @@ void mexFunction( int nlhs, mxArray *plhs[],
     if (mxGetM(prhs[3]) != 1) {mexErrMsgTxt("heat1d: ks must be a 1x1 scalar.");}
     if (mxGetN(prhs[4]) != 1) {mexErrMsgTxt("heat1d: kd must be a 1x1 scalar.");}
     if (mxGetM(prhs[4]) != 1) {mexErrMsgTxt("heat1d: kd must be a 1x1 scalar.");}
-    if (mxGetN(prhs[5]) != 1) {mexErrMsgTxt("heat1d: latitude must be a 1x1 scalar.");}
-    if (mxGetM(prhs[5]) != 1) {mexErrMsgTxt("heat1d: latitude must be a 1x1 scalar.");}
-    if (mxGetN(prhs[6]) != 1) {mexErrMsgTxt("heat1d: albedo must be a 1x1 scalar.");}
+		if (mxGetN(prhs[5]) != 1) {mexErrMsgTxt("heat1d: chi must be a 1x1 scalar.");}
+		if (mxGetM(prhs[5]) != 1) {mexErrMsgTxt("heat1d: chi must be a 1x1 scalar.");}
+    if (mxGetN(prhs[6]) != 1) {mexErrMsgTxt("heat1d: latitude must be a 1x1 scalar.");}
     if (mxGetM(prhs[6]) != 1) {mexErrMsgTxt("heat1d: latitude must be a 1x1 scalar.");}
-    
+    if (mxGetN(prhs[7]) != 1) {mexErrMsgTxt("heat1d: albedo must be a 1x1 scalar.");}
+    if (mxGetM(prhs[7]) != 1) {mexErrMsgTxt("heat1d: albedo must be a 1x1 scalar.");}
+
     h = *(mxGetPr(prhs[0]));    // h-parameter
     rhos = *(mxGetPr(prhs[1])); // surface density
     rhod = *(mxGetPr(prhs[2])); // density at depth
     ks = *(mxGetPr(prhs[3])); // ks is surface conductivity
     kd = *(mxGetPr(prhs[4])); // kd is deep conductivity
-    latitude = *(mxGetPr(prhs[5])) * PI180; // latitude
-    albedo = *(mxGetPr(prhs[6]));
-    ohour = mxGetPr(prhs[7]);   // ohour gives the times to output results
+		chi = *(mxGetPr(prhs[5])); // chi is radiative conductivity parameter
+    latitude = *(mxGetPr(prhs[6])) * PI180; // latitude
+    albedo = *(mxGetPr(prhs[7]));
+    ohour = mxGetPr(prhs[8]);   // ohour gives the times to output results
 
     //DEBUG
     //mexPrintf("latitude = %.2f\n", latitude);
-        
+		//mexPrintf("chi = %.2f\n", chi);
+
     /* Number of elements in input time vector */
-    nout = mxGetN(prhs[7]);
-    m = mxGetM(prhs[7]);
+    nout = mxGetN(prhs[8]);
+    m = mxGetM(prhs[8]);
     if ( m > nout ) nout = m;
-        
+
     // Create profile array and allocate memory
     // Most of these body- or model-specific parameters can be specified as
     // input arguments if necessary.
@@ -123,29 +130,30 @@ void mexFunction( int nlhs, mxArray *plhs[],
     p->rotperiod = PSYNODIC;
     p->obliq = OBLIQUITY;
     p->albedo = albedo;
+		p->chi = chi;
 
     //DEBUG
     //mexPrintf("Initializing thermophysical profile...\n");
     //mexPrintf("rhos = %.1f, h = %.3f\n", rhos, h);
-    
+
     // Generate model grid and thermophysical profile
     if (!depthProfile(p, h, latitude, rhos, rhod, ks, kd)) {
       mexPrintf("Error initializing profile\n");
     }
-    
-    /* Create a matrix for the return arguments: time and depth */ 
-    plhs[0] = mxCreateDoubleMatrix(p->nlayers, nout, mxREAL); 
+
+    /* Create a matrix for the return arguments: time and depth */
+    plhs[0] = mxCreateDoubleMatrix(p->nlayers, nout, mxREAL);
     otemp = mxGetPr(plhs[0]);
     plhs[1] = mxCreateDoubleMatrix(p->nlayers, 1, mxREAL);
     odepth = mxGetPr(plhs[1]);
 
     for (i=0; i<p->nlayers; i++) odepth[i] = p->layer[i].z;
-    
+
     /* Run thermal model */
     if (!thermMex( p, ohour, otemp, nout)) {
       fprintf(stderr, "thermMex returned error\n");
     }
-    
+
     // Free memory
     freeProfile(p);
     free( p );
@@ -154,12 +162,12 @@ void mexFunction( int nlhs, mxArray *plhs[],
 }
 
 int thermMex( profileT *p, double *ohour, double *otemp, int nout ) {
-	      
+
   double endtime;
 
   // When to stop the simulation
   endtime =  (NYEARSEQ + NYEARSOUT) * getSecondsPerYear(p) + (p->rotperiod)*(NDAYSOUT + ENDHOUR/24.0);
-  
+
   // Run the model
   thermalModel( p, endtime, ohour, otemp, nout );
 
@@ -174,9 +182,9 @@ void thermalModel( profileT *p, double endtime,
   long int i, j, k, l, idx;
   double time, dtime, x, nu, dec, r, tt, f;
   double *timeArr, **tempArr;
-  
+
   // x is the time step where we start writing output
-  x = NYEARSEQ * getSecondsPerYear(p); 
+  x = NYEARSEQ * getSecondsPerYear(p);
 
   // Constant grid parameters
   gridParams( p );
@@ -217,7 +225,8 @@ void thermalModel( profileT *p, double endtime,
   j  = 0;
 
   // Step back one time step before writing output
-  x -= dtime;
+	// DEBUG: THIS CAUSES ISSUES WITH INTERPOLATION ROUTINE
+  //x -= dtime;
 
   // Run the model until endtime is reached
   time = 0.0;
@@ -238,19 +247,21 @@ void thermalModel( profileT *p, double endtime,
     time += dtime; // increment time step
     if ( time > x ) {
       if ( j==k ) {
-	//tt = (time-x)*24/(p->rotperiod);
-	tt = p->hourangle * 24.0 / TWOPI;
+				//tt = (time-x)*24/(p->rotperiod);
+				tt = p->hourangle * 24.0 / TWOPI;
+				//if ( (24-tt) <= CUTOFF ) tt = 0.0;
 
-	// Update temperature array and increment index
-	timeArr[idx] = tt;
-	for (l=0; l<p->nlayers; l++) {
-	  tempArr[l][idx] = p->layer[l].t;
-	}
-	//DEBUG
-	//mexPrintf("idx = %d, timeArr[idx] = %.2f, tempArr[idx] = %.2f\n", idx, timeArr[idx], tempArr[idx]);
-	idx++;
-	
-	j = 0;
+				// Update temperature array and increment index
+				timeArr[idx] = tt;
+				for (l=0; l<p->nlayers; l++) {
+	  			tempArr[l][idx] = p->layer[l].t;
+				}
+				//DEBUG
+				//mexPrintf("idx = %d, timeArr[idx] = %.2f, tempArr[idx] = %.2f\n", idx, timeArr[idx], tempArr[0][idx]);
+				//mexPrintf("%.12f %.2f\n", timeArr[idx], tempArr[0][idx]);
+				idx++;
+
+				j = 0;
       }
       j++;
     }
@@ -263,22 +274,24 @@ void thermalModel( profileT *p, double endtime,
   // Interpolate results into output array at specified local times
   for (l=0; l<p->nlayers; l++) {
       for (i=0; i<nout; i++) {
-	otemp[l + p->nlayers*i] = interp1( timeArr, tempArr[l], idx, ohour[i] );
-	//mexPrintf("i = %d, ohour[i] = %.2f, otemp[i] = %.2f\n", i, ohour[i], otemp[i]);
+				otemp[l + p->nlayers*i] = interp1( timeArr, tempArr[l], idx, ohour[i] );
+				//mexPrintf("i = %d, ohour[i] = %.2f, otemp[i] = %.2f\n", i, ohour[i], otemp[i]);
+				//mexPrintf("%.2f %.2f\n", ohour[i], otemp[i]);
       }
   }
+	//mexPrintf("nlayers = %d\n", p->nlayers);
 
   for (l=0; l<p->nlayers; l++) free(tempArr[l]);
   free(timeArr);
   free(tempArr);
-  
+
 }
 
 int depthProfile( profileT *p, double h, double latitude,
 		  double rhos, double rhod, double ks, double kd ) {
 
   int i, nlayers;
-  double zskin, botdepth, dz[MAXLAYERS], z[MAXLAYERS], 
+  double zskin, botdepth, dz[MAXLAYERS], z[MAXLAYERS],
     rho[MAXLAYERS], t0s, t0d, t[MAXLAYERS], kc[MAXLAYERS];
 
   //FILE *fpout;
@@ -286,10 +299,10 @@ int depthProfile( profileT *p, double h, double latitude,
 
   //DEBUG
   //mexPrintf("Inside the depthProfile() function\n");
-  
+
   // Initital subsurface and surface temperatures
   t0s = pow((1.0-p->albedo)*S0/(SIGMA*p->rau*p->rau),0.25) * pow(cos(latitude),0.25);
-  t0d = t0s/sqrt(2.0) + HEATFLOW/kd + CHI/30.0*t0s;
+  t0d = t0s/sqrt(2.0) + HEATFLOW/kd + p->chi/30.0*t0s;
 
   // Set up first layer
   if (!h) {
@@ -307,7 +320,7 @@ int depthProfile( profileT *p, double h, double latitude,
   //mexPrintf("rotperiod = %.4g, kc[0] = %.4g, rho[0] = %.4g, cp[0] = %.4g, t[0] = %.2f\n", p->rotperiod, kc[0], rho[0], heatCap(t[0]), t[0]);
   //mexPrintf("zskin = %.4g, botdepth = %.3f, MAXLAYERS = %d\n", zskin, botdepth, MAXLAYERS);
   //mexPrintf("Generating layers...\n");
-  
+
   // Generate layers
   i = 0;
   while ( z[i] <= botdepth && i < MAXLAYERS ) {
@@ -354,9 +367,9 @@ int depthProfile( profileT *p, double h, double latitude,
     //DEBUG
     //mexPrintf("%.4f %.4g %.4g %.4g\n", p->layer[i].z, p->layer[i].dz, p->layer[i].rho, p->layer[i].kc);
   }
-  
+
   //fclose(fpout);
-  
+
   return ( 1 );
 
 }
@@ -397,7 +410,7 @@ double vaporPressureIce( double t ) {
 
 }
 
-void updateOrbit( double dtime, double *nu, double *dec, double *r, 
+void updateOrbit( double dtime, double *nu, double *dec, double *r,
 		  double rau, double obliq ) {
 
   double nudot;
@@ -465,8 +478,8 @@ void updateTemperatures( profileT *p, double time, double dtime, double dec, dou
 
   for ( i=1; i<(p->nlayers-1); i++ ) {
 
-    p->layer[i].tp += dtime * ( p->layer[i].c1 * p->layer[i-1].t 
-			       + p->layer[i].c2 * p->layer[i].t 
+    p->layer[i].tp += dtime * ( p->layer[i].c1 * p->layer[i-1].t
+			       + p->layer[i].c2 * p->layer[i].t
 			       + p->layer[i].c3 * p->layer[i+1].t ) / p->layer[i].rhocp;
   }
 
@@ -476,6 +489,9 @@ void updateTemperatures( profileT *p, double time, double dtime, double dec, dou
 
   p->layer[0].t = surfTemp( p, time, dec, r );
   p->layer[p->nlayers-1].t = botTemp( p );
+
+	// DEBUG
+	//mexPrintf("dtime = %.2g\n", dtime );
 
 }
 
@@ -584,10 +600,10 @@ double albedoModel( double a, double theta ) {
 
   x1 = ALBCONST1*( pow(theta/PIOVERFOUR,3) );
   x2 = ALBCONST2*( pow(theta/PIOVERTWO,8) );
-  
+
   // DEBUG
   //fprintf(stderr, "x1 = %.4f, x2 = %.4f\n", x1, x2);
-  
+
   return ( a + x1 + x2 );
 
 }
@@ -624,9 +640,10 @@ double thermCondConst( double rho, double rhos, double rhod, double ks, double k
 
 }
 
-double radParam( double k ) {
+double radParam( double k, double chi ) {
 
-  return ( CHI*R350*k );
+	//return ( 0 );
+  return ( chi*R350*k );
 
 }
 
@@ -635,7 +652,7 @@ void radParamProf( profileT *p ) {
   int i;
 
   for ( i=0; i<p->nlayers; i++ ) {
-    p->layer[i].b = radParam( p->layer[i].kc );
+    p->layer[i].b = radParam( p->layer[i].kc, p->chi );
     //VASAVADA:
     //p->layer[i].b = radParam( KS );
   }
@@ -658,7 +675,7 @@ void thermCondProf( profileT *p ) {
     b = p->layer[i].b;
     p->layer[i].k = thermCond( kc, b, p->layer[i].t );
   }
-  
+
 }
 
 double surfTemp( profileT *p, double time, double dec, double r ) {
@@ -672,7 +689,7 @@ double surfTemp( profileT *p, double time, double dec, double r ) {
   dt = tsurf;
   //tm = 0.5 * (p->layer[1].t + tsurf);
   tm = tsurf;
-  
+
   // Radiation flux at surface
   radFlux( time, dec, r, p );
 
@@ -691,13 +708,16 @@ double surfTemp( profileT *p, double time, double dec, double r ) {
     //rad = p->emis * SIGMA * tsurf * tsurf * tsurf * tsurf + LH2O*p->esub;
 
     k =  thermCond(p->layer[0].kc, p->layer[0].b, tsurf);
-    f1 = rad - p->surfflux - k * dtdz; 
+    f1 = rad - p->surfflux - k * dtdz;
     f2 = 4*rad/tsurf +
       3*(p->layer[0].kc + p->layer[0].b*tsurf*tsurf*tsurf)/twodz -
       3*p->layer[0].b*tsurf*tsurf * dtdz;
-    
+
     dt = -f1/f2;
     tsurf += dt;
+
+		//DEBUG
+		//mexPrintf("b = %.2g, k = %.2g, tsurf = %4.1f\n", p->layer[0].b, k, tsurf);
 
     //tm = 0.5 * (p->layer[1].t + tsurf);
     //tm = tsurf;
@@ -778,7 +798,7 @@ void orbitParams( double a, double ecc, double obliq, double omega,
 
 double cosSolarZenith( double lat, double dec, double h ) {
 
-  double x, y; 
+  double x, y;
 
   x = sin(lat)*sin(dec) + cos(lat)*cos(dec)*cos(h);
   y = 0.5*(x + fabs(x));
@@ -815,7 +835,7 @@ double interp1( double *x, double *y, int n, double xx ) {
 
   if ( xx <= x[0] ) {
     m = (y[1]-y[0])/(x[1]-x[0]);
-    yy = y[0] + m*(xx - x[0]); 
+    yy = y[0] + m*(xx - x[0]);
     return ( yy );
   }
 
@@ -838,4 +858,4 @@ double interp1( double *x, double *y, int n, double xx ) {
 
   return ( NANVALUE );
 
-} 
+}
