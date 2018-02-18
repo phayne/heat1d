@@ -77,7 +77,7 @@ MEX completed successfully.
   Hayne, P. O., Band?eld, J. L., Siegler, M.A., Vasavada, A. R., Ghent, 
   R. R., Williams,J.-P., ? Paige, D. A. (2017). Global rego-lith 
   thermophysical properties of theMoon from the Diviner LunarRadiometer 
-  Experiment. Journal ofGeophysical Research: Planets, 122,2371?2400. 
+  Experiment. Journal ofGeophysical Research: Planets, 122, 2371--2400. 
   https://doi.org/10.1002/2017JE005387
  
  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
