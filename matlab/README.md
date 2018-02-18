@@ -28,10 +28,11 @@ To run the model, you can call it directly as follows:
 
 ```
 >> ks = 7.4e-4; kd = 3.4e-3; rhos = 1100; rhod = 1800; H = 0.068; % Typical thermophysical parameters
+>> chi = 2.7 % Regolith radiative conductivity parameter (zero for rocks)
 >> local_time = 0:0.01:24; % local time with noon = 0
 >> albedo = 0.12; % typical surface albedo = 0.12
 >> latitude = 0; % equator
->> [t, z] = heat1d_mex(H, rhos, rhod, ks, kd, latitude, albedo, local_time);
+>> [t, z] = heat1d_mex(H, rhos, rhod, ks, kd, chi, latitude, albedo, local_time);
 ```
 The main purpose of the wrapper script is to do some error checking, and allow the use of arbitrary z-values. Some examples are provided below.
 
@@ -42,8 +43,8 @@ The main purpose of the wrapper script is to do some error checking, and allow t
 Building with 'Xcode with Clang'.
 MEX completed successfully.
 >> help lunarThermalModelCustom
-  function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, loctime, ...
-                                          depth, latitude, albedo )
+  function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, chi, ...
+                                       loctime, depth, latitude, albedo )
   -------------------------------------------------------------------------
   Lunar thermal model for calculating temperatures using standard
   thermophysical properties.
@@ -53,6 +54,7 @@ MEX completed successfully.
     rhod = deep density in kg.m-3 [1]
     ks = surface conductivity in W.m-1.K-1 [1]
     kd = conductivity at depth in W.m-1.K-1 [1]
+    chi = radiative conductivity parameter [unitless]
     loctime = local time in (lunar) hours PAST NOON [1xn]
     depth = depth in meters [mx1]
     latitude = unsigned latitude in degrees [1]
@@ -68,16 +70,27 @@ MEX completed successfully.
   model, written in C. At the moment, this is called "heat1d_mex.c". There
   are some other dependencies provided in the header of that file.
  
+  More information:
+  
+  https://github.com/phayne/heat1d 
+ 
+  Hayne, P. O., Band?eld, J. L., Siegler, M.A., Vasavada, A. R., Ghent, 
+  R. R., Williams,J.-P., ? Paige, D. A. (2017). Global rego-lith 
+  thermophysical properties of theMoon from the Diviner LunarRadiometer 
+  Experiment. Journal ofGeophysical Research: Planets, 122,2371?2400. 
+  https://doi.org/10.1002/2017JE005387
+ 
  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 >>
 >> % First set all of the thermophysical parameters, boundary conditions, and time:
 >> ks = 7.4e-4; kd = 3.4e-3; rhos = 1100; rhod = 1800; H = 0.068; % Typical thermophysical parameters
+>> chi = 2.7 % Regolith radiative conductivity parameter (zero for rocks)
 >> local_time = 0:0.01:24; % local time with noon = 0
 >> albedo = 0.12; % typical surface albedo = 0.12
 >> z = 0; % surface
 >> latitude = 0; % equator
 >> % Run the model:
->> t = lunarThermalModelCustom(H, rhos, rhod, ks, kd, local_time, z, latitude, albedo);
+>> t = lunarThermalModelCustom(H, rhos, rhod, ks, kd, chi, local_time, z, latitude, albedo);
 >> plot(local_time, t)
 >> axis([0, 24, 50, 400])
 >> xlabel('Local Time','interpreter','latex')
