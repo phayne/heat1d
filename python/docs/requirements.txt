@@ -1,3 +1,11 @@
+recommonmark
+sphinx
+sphinxcontrib-napoleon
+sphinx-py3doc-enhanced-theme
+sphinxcontrib-bibtex
+nbsphinx
 numpy
+pandas
+scipy
 matplotlib
-Click>6.0
+joblib
