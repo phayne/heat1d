@@ -2,12 +2,12 @@
 Credits
 =======
 
-Development Lead
-----------------
+Original Development
+--------------------
 
 * Paul O. Hayne <paul.hayne@lasp.colorado.edu>
 
-Contributors
-------------
+Package Maintainer
+------------------
 
 * K.-Michael Aye <kmichael.aye@gmail.com>
