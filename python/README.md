@@ -14,6 +14,7 @@ Clone the GitHub repository:
 
 ```bash
 git clone git@github.com:phayne/heat1d.git
+```
 
 Execute:
 
