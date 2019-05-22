@@ -1,0 +1,5 @@
+[report]
+omit =
+    setup.py
+    heat1d/__main__.py
+    tests/*
