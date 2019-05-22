@@ -30,10 +30,10 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 # Methods for calculating solar angles from orbits
-import orbits
+from . import orbits
 
 # Planets database
-import planets
+from . import planets
 
 # Models contain the profiles and model results
 class model(object):
