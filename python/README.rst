@@ -32,7 +32,9 @@ See the notebook_ for an example.
 Features
 --------
 
-* TODO
+* Modeling 1D heat transfer in planetary surfaces
+* Provides library of required planetary surface parameters
+* Plotting helpers (see notebook_)
 
 Installation
 ------------
