@@ -18,17 +18,29 @@ heat1d
      :alt: Updates
 
 
-Thermal model for planetary science applications
+Thermal model for planetary science applications (Python version)
 
 
 * Free software: MIT license
 * Documentation: https://heat1d.readthedocs.io.
+
+See the notebook_ for an example.
+
+.. _notebook: https://nbviewer.jupyter.org/github/phayne/heat1d/blob/master/python/notebooks/heat1d_example.ipynb
 
 
 Features
 --------
 
 * TODO
+
+Installation
+------------
+
+.. code-block:: bash
+
+   pip install heat1d
+
 
 Credits
 ---------
