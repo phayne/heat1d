@@ -7,7 +7,7 @@ import pytest
 
 from click.testing import CliRunner
 
-from heat1d import heat1d
+import heat1d
 from heat1d import cli
 
 

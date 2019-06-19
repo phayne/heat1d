@@ -37,8 +37,8 @@ setup(
     zip_safe=False,
     keywords='heat1d',
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
-        'Intended Audience :: Developers',
+        'Development Status :: 4 - Beta',
+        'Intended Audience :: Science/Research',
         'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
         'Programming Language :: Python :: 3',
