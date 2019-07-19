@@ -13,10 +13,6 @@ heat1d
         :target: https://heat1d.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
-.. image:: https://pyup.io/repos/github/phayne/heat1d/shield.svg
-     :target: https://pyup.io/repos/github/phayne/heat1d/
-     :alt: Updates
-
 
 Thermal model for planetary science applications (Python version)
 
@@ -46,6 +42,10 @@ Installation
 
 Credits
 ---------
+
+Author: P. Hayne
+
+Package maintainer: K.-Michael Aye
 
 This package was created with Cookiecutter_ and the forked `michaelaye/cookiecutter-pypackage-conda`_ project template.
 
