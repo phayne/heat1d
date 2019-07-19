@@ -4,7 +4,7 @@
 
 __author__ = """Paul O. Hayne"""
 __email__ = 'paul.hayne@lasp.colorado.edu'
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 
 # pull everything from the original heat1d module
 # into the main namespace
