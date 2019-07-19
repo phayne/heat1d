@@ -31,7 +31,8 @@ setup(
     install_requires=[
         'Click>=6.0',
         'numpy',
-        'matplotlib'
+        'matplotlib',
+        'planets',
     ],
     license="MIT license",
     zip_safe=False,
