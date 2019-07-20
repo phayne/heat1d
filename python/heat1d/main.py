@@ -1,6 +1,16 @@
 """
 1-d thermal modeling functions
 """
+import matplotlib as mpl
+# MatPlotLib and Pyplot are used for plotting
+import matplotlib.pyplot as plt
+# NumPy is needed for various math operations
+import numpy as np
+# Planets database
+import planets
+
+# Methods for calculating solar angles from orbits
+from . import orbits
 
 # Physical constants:
 sigma = 5.67051196e-8  # Stefan-Boltzmann Constant
@@ -22,18 +32,6 @@ DTBOT = DTSURF  # bottom layer temperature accuracy [K]
 NYEARSEQ = 1  # equilibration time [orbits]
 NPERDAY = 24  # minimum number of time steps per diurnal cycle
 
-# NumPy is needed for various math operations
-import numpy as np
-
-# MatPlotLib and Pyplot are used for plotting
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-
-# Methods for calculating solar angles from orbits
-from . import orbits
-
-# Planets database
-from . import planets
 
 # Models contain the profiles and model results
 class model(object):
@@ -292,14 +290,15 @@ def surfTemp(p, Qs):
         f = x * Ts - Qs - y * (-3 * Ts + 4 * p.T[1] - p.T[2])
         # fp is the first derivative w.r.t. temperature
         fp = (
-            4*x
-            - 3*p.kc[0]
+            4 * x
+            - 3
+            * p.kc[0]
             * R350
             * Ts ** 2
             * 0.5
-            * (4*p.T[1] - 3*Ts - p.T[2])
+            * (4 * p.T[1] - 3 * Ts - p.T[2])
             / p.dz[0]
-            + 3*y
+            + 3 * y
         )
 
         # Estimate of the temperature increment
