@@ -1,1 +1,4 @@
-.. include:: ../HISTORY.rst
+=======
+History
+=======
+.. include:: ../CHANGELOG.md
