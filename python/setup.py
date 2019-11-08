@@ -18,6 +18,7 @@ setup(
     long_description=readme + '\n\n' + history,
     author="Paul O. Hayne",
     author_email='paul.hayne@lasp.colorado.edu',
+    maintainer_email='kmichael.aye@gmail.com',
     url='https://github.com/phayne/heat1d',
     packages=find_packages(),
     entry_points={
