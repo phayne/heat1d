@@ -70,7 +70,9 @@ class Model(object):
 
         # Model run times
         # Equilibration time -- TODO: change to convergence check
-        self.equiltime = config.NYEARSEQ * planet.year - (config.NYEARSEQ * planet.year) % planet.day
+        self.equiltime = (
+            config.NYEARSEQ * planet.year - (config.NYEARSEQ * planet.year) % planet.day
+        )
         # Run time for output
         self.endtime = self.equiltime + ndays * planet.day
         self.t = 0.0
@@ -263,7 +265,10 @@ def albedoVar(A0, a, b, i):
 # Radiative equilibrium temperature at local noontime
 def T_radeq(planet, lat):
     return (
-        (1 - planet.albedo) / (sigma_sb.value * planet.emissivity) * planet.S * np.cos(lat)
+        (1 - planet.albedo)
+        / (sigma_sb.value * planet.emissivity)
+        * planet.S
+        * np.cos(lat)
     ) ** 0.25
 
 
