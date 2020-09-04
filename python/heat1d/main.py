@@ -230,14 +230,14 @@ class Profile(object):
 
     ##########################################################################
 
-    # Simple plot of temperature profile
     def plot(self):
-        ax = plt.axes(xlim=(0, 400), ylim=(np.min(self.z), np.max(self.z)))
-        plt.plot(self.T, self.z)
-        ax.set_ylim(1.0, 0)
-        plt.xlabel("Temperature, $T$ (K)")
-        plt.ylabel("Depth, $z$ (m)")
+        "Simple plot of temperature profile."
         mpl.rcParams["font.size"] = 14
+        ax = plt.axes(xlim=(0, 400), ylim=(np.min(self.z), np.max(self.z)))
+        ax.plot(self.T, self.z)
+        ax.set_ylim(1.0, 0)
+        ax.set_xlabel("Temperature, $T$ (K)")
+        ax.set_ylabel("Depth, $z$ (m)")
 
 
 #
