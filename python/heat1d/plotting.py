@@ -8,40 +8,44 @@ mpl.rcParams["lines.linestyle"] = "--"
 mpl.rcParams["figure.constrained_layout.use"] = True
 
 
-def profile_plot(model, ax1=None):
+def profile_axes_labels(ax):
+    ax.set_xlabel("Temperature, $T$ (K)")
+    ax.set_ylabel("Depth, $z$ (m)")
+
+
+def profile_plot(model, ax=None):
     m = model
-    if ax1 is None:
-        fig, ax1 = plt.subplots()
+    if ax is None:
+        fig, ax = plt.subplots()
     else:
-        fig = ax1.figure
+        fig = ax.figure
 
     # Depth profiles of min, mean, max temperature
     # ax1.set_xlim(-10+np.nanmin(m.T[:,0]),10+np.nanmax(m.T[:,0]))
-    ax1.set_yscale("log")
-    ax1.plot(m.T.max(0), m.profile.z, label="$T_\mathrm{max}$")
-    ax1.plot(m.T.min(0), m.profile.z, label="$T_\mathrm{min}$")
-    ax1.plot(m.T.mean(0), m.profile.z, ls="-", label="$T_\mathrm{avg}$")
-    ax1.set_xlabel("Temperature, $T$ (K)")
-    ax1.set_ylabel("Depth, $z$ (m)")
-    ax1.legend(frameon=False)
+    ax.set_yscale("log")
+    ax.plot(m.T.max(0), m.profile.z, label="$T_\mathrm{max}$")
+    ax.plot(m.T.min(0), m.profile.z, label="$T_\mathrm{min}$")
+    ax.plot(m.T.mean(0), m.profile.z, ls="-", label="$T_\mathrm{avg}$")
+    profile_axes_labels(ax)
+    ax.legend(frameon=False)
     # ax1.set_ylim(np.nanmax(m.profile.z), m.profile.z[1])
-    ax1.set_ylim(1.5, m.profile.z[1])
+    ax.set_ylim(1.5, m.profile.z[1])
 
 
-def diurnal_curves(model, ax2=None):
+def diurnal_curves(model, ax=None):
     m = model
-    if ax2 is None:
-        fig, ax2 = plt.subplots()
+    if ax is None:
+        fig, ax = plt.subplots()
     else:
-        fig = ax2.figure
+        fig = ax.figure
 
     # Diurnal temperature curves
-    ax2.set_xlim(m.lt.min(), np.nanmax(m.lt) + 40)
-    ax2.set_ylim(-5 + m.T.min(), m.T.max() + 5)
-    ax2.yaxis.tick_right()
-    ax2.yaxis.set_label_position("right")
+    ax.set_xlim(m.lt.min(), np.nanmax(m.lt) + 40)
+    ax.set_ylim(-5 + m.T.min(), m.T.max() + 5)
+    ax.yaxis.tick_right()
+    ax.yaxis.set_label_position("right")
     for i, z in enumerate(m.profile.z):
-        ax2.plot(
+        ax.plot(
             m.lt,
             m.T[:, i],
             ls="-",
@@ -49,9 +53,9 @@ def diurnal_curves(model, ax2=None):
             label="{:.3f}".format(z),
             color=plt.cm.magma(i * 10),
         )
-    ax2.legend(frameon=False, title="Depth (m):", fontsize=8)
-    ax2.set_xlabel("Local Time (hr past noon)")
-    ax2.set_ylabel("Temperature, $T$ (K)")
+    ax.legend(frameon=False, title="Depth (m):", fontsize=8)
+    ax.set_xlabel("Local Time (hr past noon)")
+    ax.set_ylabel("Temperature, $T$ (K)")
 
 
 def plot_profile_and_diurnals(model, save=False):
@@ -61,3 +65,14 @@ def plot_profile_and_diurnals(model, save=False):
     fig.suptitle(f"Chi: {model.profile.chi}")
     if save:
         fig.savefig("heat1d_example.pdf")
+
+
+def compare_model_profiles(m1, m2):
+    fig, ax = plt.subplots()
+    ax.plot(m1.T.mean(0), m1.profile.z, ls="-", label=f"chi: {m1.profile.chi}")
+    plt.plot(m2.T.mean(0), m2.profile.z, ls="-", label=f"chi: {m2.profile.chi}")
+    ax.legend()
+    profile_axes_labels(ax)
+    ax.set_yscale("log")
+    ax.set_ylim(1.5, m1.profile.z[1])
+    ax.set_title("Average T-profile for different chi values")
