@@ -112,12 +112,18 @@ class Model(object):
         self.t += self.dt  # Increment time
 
     def updateOrbit(self):
+        """Update orbit parameters for the insolation calculation.
+
+        `nudot` is updated within `orbitParams`.
+        """
         orbits.orbitParams(self)
         self.nu += self.nudot * self.dt
 
-    # Surface heating rate
-    # May include solar and infrared contributions, reflectance phase function
     def surfFlux(self):
+        """Surface heating rate.
+        
+        May include solar and infrared contributions, reflectance phase function
+        """
         h = orbits.hourAngle(self.t, self.planet.day)  # hour angle
         c = orbits.cosSolarZenith(self.lat, self.dec, h)  # cosine of incidence angle
         i = np.arccos(c)  # solar incidence angle [rad]
@@ -186,13 +192,24 @@ class Profile(object):
     def update_k(self):
         self.k = thermCond(self.kc, self.T, self.R350)
 
-    ##########################################################################
-    # Core thermal computation                                               #
-    # dt -- time step [s]                                                    #
-    # Qs -- surface heating rate [W.m-2]                                     #
-    # Qb -- bottom heating rate (interior heat flow) [W.m-2]                 #
-    ##########################################################################
     def update_T(self, dt, Qs=0, Qb=0):
+        """Core thermal computation.
+
+        Calls `surfTemp` and `botTemp`.
+
+        Parameters
+        ----------
+        dt : float
+            time step [s]
+        Qs : float
+            surface heating rate [W.m-2]
+        Qb : float
+            bottom heating rate (interior heat flow) [W.m-2]
+
+        Side effects
+        ------------
+        self.T is being updated.
+        """
         # Coefficients for temperature-derivative terms
         alpha = self.g1 * self.k[0:-2]
         beta = self.g2 * self.k[1:-1]
@@ -223,23 +240,49 @@ class Profile(object):
         mpl.rcParams["font.size"] = 14
 
 
+#
 # ---------------------------------------------------------------------------
-"""
-
-The functions defined below are used by the thermal code.
-
-"""
+# The functions defined below are used by the thermal code.
 # ---------------------------------------------------------------------------
+#
 
-# Thermal skin depth [m]
-# P = period (e.g., diurnal, seasonal)
-# kappa = thermal diffusivity = k/(rho*cp) [m2.s-1]
+
 def skinDepth(P, kappa):
+    """Calculate Thermal skin depth.
+    
+    Parameters
+    ----------
+    P : float
+        period (e.g., diurnal, seasonal)
+    kappa : float
+        thermal diffusivity = k/(rho*cp) [m2.s-1]
+
+    Returns
+    -------
+    float
+        Thermal skin depth [m]
+    """
     return np.sqrt(kappa * P / np.pi)
 
 
-# The spatial grid is non-uniform, with layer thickness increasing downward
 def spatialGrid(zs, m, n, b):
+    """Calculate the spatial grid. 
+    
+    The spatial grid is non-uniform, with layer thickness increasing downward.
+
+    Parameters:
+    m : int
+        Number of layers in upper skin depth [default: 10, set in Config]
+    n : int
+        Layer increase with depth: dz[i] = dz[i-1]*(1+1/n) [default: 5, set in Config]
+    b : int
+        Number of skin depths to bottom layer [default: 20, set in Config]
+
+    Returns
+    -------
+    np.array(float)
+        Spatial node coordinates in meters.
+    """
     dz = np.zeros(1) + zs / m  # thickness of uppermost model layer
     z = np.zeros(1)  # initialize depth array at zero
     zmax = zs * b  # depth of deepest model layer
@@ -254,16 +297,38 @@ def spatialGrid(zs, m, n, b):
     return z
 
 
-# Solar incidence angle-dependent albedo model
-# A0 = albedo at zero solar incidence angle
-# a, b = coefficients
-# i = solar incidence angle
 def albedoVar(A0, a, b, i):
+    """Calculate solar incidence angle-dependent albedo model.
+
+    This follows the empirical fits of Keihm (1984) and Vasavada et al. (2012
+    
+    Parameters
+    ----------
+    A0 : float
+        albedo at zero solar incidence angle
+    a, b : float
+        coefficients
+    i : float
+        solar incidence angle [rad]
+    """
     return A0 + a * (i / (np.pi / 4)) ** 3 + b * (i / (np.pi / 2)) ** 8
 
 
-# Radiative equilibrium temperature at local noontime
 def T_radeq(planet, lat):
+    """Calculate radiative equilibrium temperature at local noontime.
+
+    Parameters
+    ----------
+    planet : planets.Planet
+        Planetary constants object
+    lat : float
+        Latitude of point of interest
+    
+    Returns
+    -------
+    float
+        Temp [K]
+    """
     return (
         (1 - planet.albedo)
         / (sigma_sb.value * planet.emissivity)
@@ -272,42 +337,74 @@ def T_radeq(planet, lat):
     ) ** 0.25
 
 
-# Equilibrium mean temperature for rapidly rotating bodies
 def T_eq(planet, lat):
+    """Calculate equilibrium mean temperature for rapidly rotating bodies.
+
+    Parameters
+    ----------
+    planet : planets.Planet
+        Planetary constants object
+    lat : float
+        Latitude of point of interest
+    
+    Returns
+    -------
+    float
+        Temp [K]
+    """
     return T_radeq(planet, lat) / np.sqrt(2)
 
 
-# Heat capacity of regolith (temperature-dependent)
-# This polynomial fit is based on data from Ledlow et al. (1992) and
-# Hemingway et al. (1981), and is valid for T > ~10 K
-# The formula yields *negative* (i.e. non-physical) values for T < 1.3 K
 def heatCapacity(planet, T):
+    """ Calculate heat capacity of regolith (temperature-dependent)
+    
+    This polynomial fit is based on data from Ledlow et al. (1992) and
+    Hemingway et al. (1981), and is valid for T > ~10 K.
+    The formula yields *negative* (i.e. non-physical) values for T < 1.3 K
+
+    Parameters
+    ----------
+    planet : planets.Planet
+        Planetary constants object
+    T : float, np.array(float)
+
+    Returns
+    -------
+    np.array(float)
+        heat capacity `cp`
+    """
     c = planet.cpCoeff
     return np.polyval(c, T)
 
 
-# Temperature-dependent thermal conductivity
-# Based on Mitchell and de Pater (1994) and Vasavada et al. (2012)
 def thermCond(kc, T, R350=R350(2.7)):
     """Calculate a temperature-dependent thermal conductivity.
 
-    See [1]
+    Based on Mitchell and de Pater (1994) and Vasavada et al. (2012)
+    See also [1]
 
     Parameters
     ----------
     kc : float
-        TODO
+        contact conductivity
     T : float
         Temperature
     R350 : float
         Grain-size related parameter
+
+    Returns
+    -------
+    np.array(float)
+        Thermal conductivity `K`
 
     References
     ----------
 
     .. [1] O. McNoleg, "The integration of GIS, remote sensing,
            expert systems and adaptive co-kriging for environmental habitat
-           modelling of the Highland Haggis using object-oriented, fuzzy-logic and neural-network techniques," Computers & Geosciences, vol. 22, pp. 585-588, 1996.
+           modelling of the Highland Haggis using object-oriented, fuzzy-logic and
+           neural-network techniques," Computers & Geosciences, vol. 22, pp. 585-588,
+           1996.
 
     """
     return kc * (1 + R350 * T ** 3)
@@ -317,12 +414,12 @@ def surfTemp(p, Qs):
     """Surface temperature calculation using Newton's root-finding method
 
     Parameters
-    ==========
+    ----------
     p : Profile object
     Qs : float
         Heating rate [W.m-2] (e.g., insolation and infared heating)
     """
-    Ts = p.T[0]
+    Ts = p.T[0]  # surface temp
     deltaT = Ts
 
     while np.abs(deltaT) > p.config.DTSURF:
@@ -358,7 +455,7 @@ def botTemp(p, Qb):
     flux and the temperature of the layer above.
 
     Parameters
-    ==========
+    ----------
     p : Profile object
     Qb : float
         Interior heat flux
@@ -367,5 +464,6 @@ def botTemp(p, Qb):
 
 
 def getTimeStep(p, day, config):
-    dt_min = np.min(config.F * p.rho[:-1] * p.cp[:-1] * p.dz ** 2 / p.k[:-1])
-    return dt_min
+    # TODO: Why is `day` not used here?
+    dt_max = np.min(config.F * p.rho[:-1] * p.cp[:-1] * p.dz ** 2 / p.k[:-1])
+    return dt_max
