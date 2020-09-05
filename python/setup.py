@@ -13,11 +13,12 @@ with open('HISTORY.rst') as history_file:
 
 setup(
     name='heat1d',
-    version='0.1.6',
+    version='0.2.0',
     description="Thermal model for planetary science applications",
     long_description=readme + '\n\n' + history,
     author="Paul O. Hayne",
     author_email='paul.hayne@lasp.colorado.edu',
+    maintainer_email='kmichael.aye@gmail.com',
     url='https://github.com/phayne/heat1d',
     packages=find_packages(),
     entry_points={

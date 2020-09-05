@@ -1,43 +1,57 @@
 """
 1-d thermal modeling functions
 """
+from dataclasses import dataclass
+
 import matplotlib as mpl
-# MatPlotLib and Pyplot are used for plotting
 import matplotlib.pyplot as plt
-# NumPy is needed for various math operations
 import numpy as np
-# Planets database
+from astropy.constants import sigma_sb
+
 import planets
 
-# Methods for calculating solar angles from orbits
-from . import orbits
+from . import orbits  # Methods for calculating solar angles from orbits
 
-# Physical constants:
-sigma = 5.67051196e-8  # Stefan-Boltzmann Constant
-# S0 = 1361.0 # Solar constant at 1 AU [W.m-2]
-chi = 2.7  # Radiative conductivity parameter [Mitchell and de Pater, 1994]
-R350 = chi / 350 ** 3  # Useful form of the radiative conductivity
 
-# Numerical parameters:
-F = 0.5  # Fourier Mesh Number, must be <= 0.5 for stability
-m = 10  # Number of layers in upper skin depth [default: 10]
-n = 5  # Layer increase with depth: dz[i] = dz[i-1]*(1+1/n) [default: 5]
-b = 20  # Number of skin depths to bottom layer [default: 20]
+def R350(chi):
+    return chi / 350 ** 3
 
-# Accuracy of temperature calculations
-# The model will run until the change in temperature of the bottom layer
-# is less than DTBOT over one diurnal cycle
-DTSURF = 0.1  # surface temperature accuracy [K]
-DTBOT = DTSURF  # bottom layer temperature accuracy [K]
-NYEARSEQ = 1  # equilibration time [orbits]
-NPERDAY = 24  # minimum number of time steps per diurnal cycle
+
+@dataclass
+class Configurator:
+    """Configuration class for model runs.
+
+    Using a class enables the user to change any values to their requirements.
+    """
+
+    # Physical constants
+    sigma: float = sigma_sb.value  # Stefan-Boltzmann Constant, 5.67051196e-8
+    S0: float = 1361.0  # Solar constant at 1 AU [W.m-2]
+    chi: float = 2.7  # Radiative conductivity parameter [Mitchell and de Pater, 1994]
+    # Numerical parameters
+    F: float = 0.5  # Fourier Mesh Number, must be <= 0.5 for stability
+    m: int = 10  # Number of layers in upper skin depth [default: 10]
+    n: int = 5  # Layer increase with depth: dz[i] = dz[i-1]*(1+1/n) [default: 5]
+    b: int = 20  # Number of skin depths to bottom layer [default: 20]
+    # Accuracy of temperature calculations
+    # The model will run until the change in temperature of the bottom layer
+    # is less than DTBOT over one diurnal cycle
+    DTSURF: float = 0.1  # surface temperature accuracy [K]
+    NYEARSEQ: int = 1  # equilibration time [orbits]
+    NPERDAY: int = 24  # minimum number of time steps per diurnal cycle
+    DTBOT: float = 0.1  # bottom layer temperature accuracy [K]
+
+    @property
+    def R350(self):
+        "Return useful form of the radiative conductivity"
+        return R350(self.chi)
 
 
 # Models contain the profiles and model results
-class model(object):
+class Model(object):
 
     # Initialization
-    def __init__(self, planet=planets.Moon, lat=0, ndays=1):
+    def __init__(self, planet=planets.Moon, lat=0, ndays=1, config=Configurator()):
 
         # Initialize
         self.planet = planet
@@ -52,18 +66,20 @@ class model(object):
         self.Qs = np.float()  # surface flux
 
         # Initialize model profile
-        self.profile = Profile(planet)
+        self.profile = Profile(planet, lat=lat, config=config)
 
         # Model run times
         # Equilibration time -- TODO: change to convergence check
-        self.equiltime = NYEARSEQ * planet.year - (NYEARSEQ * planet.year) % planet.day
+        self.equiltime = (
+            config.NYEARSEQ * planet.year - (config.NYEARSEQ * planet.year) % planet.day
+        )
         # Run time for output
         self.endtime = self.equiltime + ndays * planet.day
         self.t = 0.0
-        self.dt = getTimeStep(self.profile, self.planet.day)
+        self.dt = getTimeStep(self.profile, self.planet.day, config)
         # Check for maximum time step
         self.dtout = self.dt
-        dtmax = self.planet.day / NPERDAY
+        dtmax = self.planet.day / config.NPERDAY
         if self.dt > dtmax:
             self.dtout = dtmax
 
@@ -96,12 +112,18 @@ class model(object):
         self.t += self.dt  # Increment time
 
     def updateOrbit(self):
+        """Update orbit parameters for the insolation calculation.
+
+        `nudot` is updated within `orbitParams`.
+        """
         orbits.orbitParams(self)
         self.nu += self.nudot * self.dt
 
-    # Surface heating rate
-    # May include solar and infrared contributions, reflectance phase function
     def surfFlux(self):
+        """Surface heating rate.
+        
+        May include solar and infrared contributions, reflectance phase function
+        """
         h = orbits.hourAngle(self.t, self.planet.day)  # hour angle
         c = orbits.cosSolarZenith(self.lat, self.dec, h)  # cosine of incidence angle
         i = np.arccos(c)  # solar incidence angle [rad]
@@ -120,7 +142,7 @@ class Profile(object):
 
     """
 
-    def __init__(self, planet=planets.Moon, lat=0):
+    def __init__(self, planet=planets.Moon, lat=0, config=None):
 
         self.planet = planet
 
@@ -133,8 +155,11 @@ class Profile(object):
         H = planet.H
         cp0 = planet.cp0
         kappa = ks / (rhos * cp0)
+        self.config = config
 
-        self.z = spatialGrid(skinDepth(planet.day, kappa), m, n, b)
+        self.chi = config.chi
+        self.R350 = R350(self.chi)
+        self.z = spatialGrid(skinDepth(planet.day, kappa), config.m, config.n, config.b)
         self.nlayers = np.size(self.z)  # number of model layers
         self.dz = np.diff(self.z)
         self.d3z = self.dz[1:] * self.dz[0:-1] * (self.dz[1:] + self.dz[0:-1])
@@ -165,15 +190,26 @@ class Profile(object):
 
     # Thermal conductivity initialization (temperature-dependent)
     def update_k(self):
-        self.k = thermCond(self.kc, self.T)
+        self.k = thermCond(self.kc, self.T, self.R350)
 
-    ##########################################################################
-    # Core thermal computation                                               #
-    # dt -- time step [s]                                                    #
-    # Qs -- surface heating rate [W.m-2]                                     #
-    # Qb -- bottom heating rate (interior heat flow) [W.m-2]                 #
-    ##########################################################################
     def update_T(self, dt, Qs=0, Qb=0):
+        """Core thermal computation.
+
+        Calls `surfTemp` and `botTemp`.
+
+        Parameters
+        ----------
+        dt : float
+            time step [s]
+        Qs : float
+            surface heating rate [W.m-2]
+        Qb : float
+            bottom heating rate (interior heat flow) [W.m-2]
+
+        Side effects
+        ------------
+        self.T is being updated.
+        """
         # Coefficients for temperature-derivative terms
         alpha = self.g1 * self.k[0:-2]
         beta = self.g2 * self.k[1:-1]
@@ -194,33 +230,59 @@ class Profile(object):
 
     ##########################################################################
 
-    # Simple plot of temperature profile
     def plot(self):
-        ax = plt.axes(xlim=(0, 400), ylim=(np.min(self.z), np.max(self.z)))
-        plt.plot(self.T, self.z)
-        ax.set_ylim(1.0, 0)
-        plt.xlabel("Temperature, $T$ (K)")
-        plt.ylabel("Depth, $z$ (m)")
+        "Simple plot of temperature profile."
         mpl.rcParams["font.size"] = 14
+        ax = plt.axes(xlim=(0, 400), ylim=(np.min(self.z), np.max(self.z)))
+        ax.plot(self.T, self.z)
+        ax.set_ylim(1.0, 0)
+        ax.set_xlabel("Temperature, $T$ (K)")
+        ax.set_ylabel("Depth, $z$ (m)")
 
 
+#
 # ---------------------------------------------------------------------------
-"""
-
-The functions defined below are used by the thermal code.
-
-"""
+# The functions defined below are used by the thermal code.
 # ---------------------------------------------------------------------------
+#
 
-# Thermal skin depth [m]
-# P = period (e.g., diurnal, seasonal)
-# kappa = thermal diffusivity = k/(rho*cp) [m2.s-1]
+
 def skinDepth(P, kappa):
+    """Calculate Thermal skin depth.
+    
+    Parameters
+    ----------
+    P : float
+        period (e.g., diurnal, seasonal)
+    kappa : float
+        thermal diffusivity = k/(rho*cp) [m2.s-1]
+
+    Returns
+    -------
+    float
+        Thermal skin depth [m]
+    """
     return np.sqrt(kappa * P / np.pi)
 
 
-# The spatial grid is non-uniform, with layer thickness increasing downward
 def spatialGrid(zs, m, n, b):
+    """Calculate the spatial grid. 
+    
+    The spatial grid is non-uniform, with layer thickness increasing downward.
+
+    Parameters:
+    m : int
+        Number of layers in upper skin depth [default: 10, set in Config]
+    n : int
+        Layer increase with depth: dz[i] = dz[i-1]*(1+1/n) [default: 5, set in Config]
+    b : int
+        Number of skin depths to bottom layer [default: 20, set in Config]
+
+    Returns
+    -------
+    np.array(float)
+        Spatial node coordinates in meters.
+    """
     dz = np.zeros(1) + zs / m  # thickness of uppermost model layer
     z = np.zeros(1)  # initialize depth array at zero
     zmax = zs * b  # depth of deepest model layer
@@ -235,38 +297,116 @@ def spatialGrid(zs, m, n, b):
     return z
 
 
-# Solar incidence angle-dependent albedo model
-# A0 = albedo at zero solar incidence angle
-# a, b = coefficients
-# i = solar incidence angle
 def albedoVar(A0, a, b, i):
+    """Calculate solar incidence angle-dependent albedo model.
+
+    This follows the empirical fits of Keihm (1984) and Vasavada et al. (2012
+    
+    Parameters
+    ----------
+    A0 : float
+        albedo at zero solar incidence angle
+    a, b : float
+        coefficients
+    i : float
+        solar incidence angle [rad]
+    """
     return A0 + a * (i / (np.pi / 4)) ** 3 + b * (i / (np.pi / 2)) ** 8
 
 
-# Radiative equilibrium temperature at local noontime
 def T_radeq(planet, lat):
+    """Calculate radiative equilibrium temperature at local noontime.
+
+    Parameters
+    ----------
+    planet : planets.Planet
+        Planetary constants object
+    lat : float
+        Latitude of point of interest
+    
+    Returns
+    -------
+    float
+        Temp [K]
+    """
     return (
-        (1 - planet.albedo) / (sigma * planet.emissivity) * planet.S * np.cos(lat)
+        (1 - planet.albedo)
+        / (sigma_sb.value * planet.emissivity)
+        * planet.S
+        * np.cos(lat)
     ) ** 0.25
 
 
-# Equilibrium mean temperature for rapidly rotating bodies
 def T_eq(planet, lat):
+    """Calculate equilibrium mean temperature for rapidly rotating bodies.
+
+    Parameters
+    ----------
+    planet : planets.Planet
+        Planetary constants object
+    lat : float
+        Latitude of point of interest
+    
+    Returns
+    -------
+    float
+        Temp [K]
+    """
     return T_radeq(planet, lat) / np.sqrt(2)
 
 
-# Heat capacity of regolith (temperature-dependent)
-# This polynomial fit is based on data from Ledlow et al. (1992) and
-# Hemingway et al. (1981), and is valid for T > ~10 K
-# The formula yields *negative* (i.e. non-physical) values for T < 1.3 K
 def heatCapacity(planet, T):
+    """ Calculate heat capacity of regolith (temperature-dependent)
+    
+    This polynomial fit is based on data from Ledlow et al. (1992) and
+    Hemingway et al. (1981), and is valid for T > ~10 K.
+    The formula yields *negative* (i.e. non-physical) values for T < 1.3 K
+
+    Parameters
+    ----------
+    planet : planets.Planet
+        Planetary constants object
+    T : float, np.array(float)
+
+    Returns
+    -------
+    np.array(float)
+        heat capacity `cp`
+    """
     c = planet.cpCoeff
     return np.polyval(c, T)
 
 
-# Temperature-dependent thermal conductivity
-# Based on Mitchell and de Pater (1994) and Vasavada et al. (2012)
-def thermCond(kc, T):
+def thermCond(kc, T, R350=R350(2.7)):
+    """Calculate a temperature-dependent thermal conductivity.
+
+    Based on Mitchell and de Pater (1994) and Vasavada et al. (2012)
+    See also [1]
+
+    Parameters
+    ----------
+    kc : float
+        contact conductivity
+    T : float
+        Temperature
+    R350 : float
+        Grain-size related parameter
+
+    Returns
+    -------
+    np.array(float)
+        Thermal conductivity `K`
+
+    References
+    ----------
+
+    .. [1] O. McNoleg, "The integration of GIS, remote sensing,
+           expert systems and adaptive co-kriging for environmental habitat
+           modelling of the Highland Haggis using object-oriented, fuzzy-logic and
+           neural-network techniques," Computers & Geosciences, vol. 22, pp. 585-588,
+           1996.
+
+    """
     return kc * (1 + R350 * T ** 3)
 
 
@@ -274,16 +414,16 @@ def surfTemp(p, Qs):
     """Surface temperature calculation using Newton's root-finding method
 
     Parameters
-    ==========
+    ----------
     p : Profile object
     Qs : float
         Heating rate [W.m-2] (e.g., insolation and infared heating)
     """
-    Ts = p.T[0]
+    Ts = p.T[0]  # surface temp
     deltaT = Ts
 
-    while np.abs(deltaT) > DTSURF:
-        x = p.emissivity * sigma * Ts ** 3
+    while np.abs(deltaT) > p.config.DTSURF:
+        x = p.emissivity * p.config.sigma * Ts ** 3
         y = 0.5 * thermCond(p.kc[0], Ts) / p.dz[0]
 
         # f is the function whose zeros we seek
@@ -293,7 +433,7 @@ def surfTemp(p, Qs):
             4 * x
             - 3
             * p.kc[0]
-            * R350
+            * p.R350
             * Ts ** 2
             * 0.5
             * (4 * p.T[1] - 3 * Ts - p.T[2])
@@ -315,7 +455,7 @@ def botTemp(p, Qb):
     flux and the temperature of the layer above.
 
     Parameters
-    ==========
+    ----------
     p : Profile object
     Qb : float
         Interior heat flux
@@ -323,6 +463,7 @@ def botTemp(p, Qb):
     p.T[-1] = p.T[-2] + (Qb / p.k[-2]) * p.dz[-1]
 
 
-def getTimeStep(p, day):
-    dt_min = np.min(F * p.rho[:-1] * p.cp[:-1] * p.dz ** 2 / p.k[:-1])
-    return dt_min
+def getTimeStep(p, day, config):
+    # TODO: Why is `day` not used here?
+    dt_max = np.min(config.F * p.rho[:-1] * p.cp[:-1] * p.dz ** 2 / p.k[:-1])
+    return dt_max
