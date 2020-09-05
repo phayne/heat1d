@@ -24,7 +24,7 @@ setup(
     entry_points={"console_scripts": ["heat1d=heat1d.cli:main"]},
     package_dir={"heat1d": "heat1d"},
     include_package_data=True,
-    install_requires=["Click>=6.0", "numpy", "matplotlib", "planets>=0.4.6",],
+    install_requires=["numpy", "matplotlib", "planets>=0.4.6",],
     license="MIT license",
     zip_safe=False,
     keywords="heat1d",
