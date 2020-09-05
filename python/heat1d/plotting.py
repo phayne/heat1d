@@ -49,6 +49,7 @@ def profile_plot(model, ax=None):
     ax.legend(frameon=False)
     # ax1.set_ylim(np.nanmax(m.profile.z), m.profile.z[1])
     ax.set_ylim(1.5, m.profile.z[1])
+    ax.set_title(f"Chi: {model.profile.chi}")
 
 
 def diurnal_curves(model, ax=None):
@@ -75,13 +76,13 @@ def diurnal_curves(model, ax=None):
     ax.legend(frameon=False, title="Depth (m):", fontsize=8)
     ax.set_xlabel("Local Time (hr past noon)")
     ax.set_ylabel("Temperature, $T$ [K]")
+    ax.set_title(f"Chi: {model.profile.chi}")
 
 
 def plot_profile_and_diurnals(model, save=False):
     fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(9, 5))
     profile_plot(model, ax1)
     diurnal_curves(model, ax2)
-    fig.suptitle(f"Chi: {model.profile.chi}")
     if save:
         fig.savefig("heat1d_example.pdf")
 
