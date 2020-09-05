@@ -1,16 +1,35 @@
+"""
+Plotting module
+
+This module provides the old style settings from the former prettyPlots but makes use of the newer matplotlib stylesheets for increased flexibility.
+
+Authors: Paul O. Hayne (setStyle, setFont), Michael Aye (the rest)
+"""
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 import numpy as np
+import matplotlib
+import numpy as np
 
-mpl.rcParams["font.size"] = 18
-mpl.rcParams["lines.linewidth"] = 2
-mpl.rcParams["lines.linestyle"] = "--"
-mpl.rcParams["figure.constrained_layout.use"] = True
+
+# look at plt.style.available for other styles
+plt.style.use("seaborn")
+
+# mpl.rcParams["figure.constrained_layout.use"] = True
+# plt.rcParams.update(
+#     {
+#         "text.usetex": True,
+#         "font.family": "serif",
+#         "font.serif": ["Palatino"],
+#         "lines.linewidth": 2,
+#         "lines.markersize": 8,
+#     }
+# )
 
 
 def profile_axes_labels(ax):
-    ax.set_xlabel("Temperature, $T$ (K)")
-    ax.set_ylabel("Depth, $z$ (m)")
+    ax.set_xlabel("Temperature, $T$ [K]")
+    ax.set_ylabel("Depth, $z$ [m]")
 
 
 def profile_plot(model, ax=None):
@@ -55,11 +74,11 @@ def diurnal_curves(model, ax=None):
         )
     ax.legend(frameon=False, title="Depth (m):", fontsize=8)
     ax.set_xlabel("Local Time (hr past noon)")
-    ax.set_ylabel("Temperature, $T$ (K)")
+    ax.set_ylabel("Temperature, $T$ [K]")
 
 
 def plot_profile_and_diurnals(model, save=False):
-    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(14, 5))
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(9, 5))
     profile_plot(model, ax1)
     diurnal_curves(model, ax2)
     fig.suptitle(f"Chi: {model.profile.chi}")
@@ -76,3 +95,35 @@ def compare_model_profiles(m1, m2):
     ax.set_yscale("log")
     ax.set_ylim(1.5, m1.profile.z[1])
     ax.set_title("Average T-profile for different chi values")
+
+
+def setStyle():
+    """
+    Set overall style of plots:
+    Thicker lines, larger text, LaTeX rendering
+    """
+    import matplotlib
+
+    rcParams = matplotlib.rcParams
+    rc = matplotlib.rc
+    setFont(rc, 16)
+    rc("lines", linewidth=2, markersize=8)
+    rc("axes", titlesize=22, labelsize=20)
+    rc("xtick", labelsize=18)
+    rc("ytick", labelsize=18)
+
+
+def setFont(rc, font_size):
+    font = {"family": "serif", "size": font_size}
+    rc("font", **font)
+    rc("text", usetex=True)
+
+
+@np.vectorize
+def degreeLabelFormat(x):
+    "Format text with degree symbol."
+    if rcParams["text.usetex"] and not rcParams["text.latex.unicode"]:
+        return r"$%0.0f^\circ$" % x
+    else:
+        return "%0.0f\u00b0" % x
+
