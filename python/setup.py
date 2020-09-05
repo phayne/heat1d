@@ -13,7 +13,7 @@ with open("HISTORY.rst") as history_file:
 
 setup(
     name="heat1d",
-    version="version='0.3.1'",
+    version="0.3.1",
     description="Thermal model for planetary science applications",
     long_description=readme + "\n\n" + history,
     author="Paul O. Hayne",
