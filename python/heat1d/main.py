@@ -121,7 +121,7 @@ class Model(object):
 
     def surfFlux(self):
         """Surface heating rate.
-        
+
         May include solar and infrared contributions, reflectance phase function
         """
         h = orbits.hourAngle(self.t, self.planet.day)  # hour angle
@@ -152,7 +152,7 @@ class Profile(object):
         kd = planet.kd
         rhos = planet.rhos
         rhod = planet.rhod
-        H = planet.H
+        self.H = planet.H
         cp0 = planet.cp0
         kappa = ks / (rhos * cp0)
         self.config = config
@@ -167,8 +167,8 @@ class Profile(object):
         self.g2 = 2 * self.dz[0:-1] / self.d3z[0:]  # A.K.A. "q" in the Appendix
 
         # Thermophysical properties
-        self.kc = kd - (kd - ks) * np.exp(-self.z / H)
-        self.rho = rhod - (rhod - rhos) * np.exp(-self.z / H)
+        self.kc = kd - (kd - ks) * np.exp(-self.z / self.H)
+        self.rho = rhod - (rhod - rhos) * np.exp(-self.z / self.H)
 
         # Initialize temperature profile
         self.init_T(planet, lat)
@@ -249,7 +249,7 @@ class Profile(object):
 
 def skinDepth(P, kappa):
     """Calculate Thermal skin depth.
-    
+
     Parameters
     ----------
     P : float
@@ -266,8 +266,8 @@ def skinDepth(P, kappa):
 
 
 def spatialGrid(zs, m, n, b):
-    """Calculate the spatial grid. 
-    
+    """Calculate the spatial grid.
+
     The spatial grid is non-uniform, with layer thickness increasing downward.
 
     Parameters:
@@ -301,7 +301,7 @@ def albedoVar(A0, a, b, i):
     """Calculate solar incidence angle-dependent albedo model.
 
     This follows the empirical fits of Keihm (1984) and Vasavada et al. (2012
-    
+
     Parameters
     ----------
     A0 : float
@@ -323,7 +323,7 @@ def T_radeq(planet, lat):
         Planetary constants object
     lat : float
         Latitude of point of interest
-    
+
     Returns
     -------
     float
@@ -346,7 +346,7 @@ def T_eq(planet, lat):
         Planetary constants object
     lat : float
         Latitude of point of interest
-    
+
     Returns
     -------
     float
@@ -356,8 +356,8 @@ def T_eq(planet, lat):
 
 
 def heatCapacity(planet, T):
-    """ Calculate heat capacity of regolith (temperature-dependent)
-    
+    """Calculate heat capacity of regolith (temperature-dependent)
+
     This polynomial fit is based on data from Ledlow et al. (1992) and
     Hemingway et al. (1981), and is valid for T > ~10 K.
     The formula yields *negative* (i.e. non-physical) values for T < 1.3 K
