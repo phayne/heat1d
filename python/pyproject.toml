@@ -12,7 +12,6 @@ heat1d = "heat1d.cli:main"
 
 [tool.poetry.dependencies]
 python = "*"
-click = ">=6.0"
 matplotlib = "*"
 numpy = "*"
 planets = "*"
