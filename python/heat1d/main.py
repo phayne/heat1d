@@ -6,9 +6,9 @@ from dataclasses import dataclass
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-from astropy.constants import sigma_sb
-
 import planets
+from astropy.constants import sigma_sb
+from numba import jit
 
 from . import orbits  # Methods for calculating solar angles from orbits
 
@@ -377,6 +377,7 @@ def heatCapacity(planet, T):
     return np.polyval(c, T)
 
 
+@jit(nopython=True)
 def thermCond(kc, T, R350=R350(2.7)):
     """Calculate a temperature-dependent thermal conductivity.
 
