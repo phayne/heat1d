@@ -113,18 +113,17 @@ class L3DivData:
     def label_url(self):
         return self.folder_url / self.label
 
-    def download_label(self, subfolder=""):
+    def download_label(self, subfolder="/luna4/maye/l3_data"):
         p = Path(subfolder)
         p.mkdir(exist_ok=True)
         url_retrieve(self.label_url, Path(subfolder) / self.label)
 
-    def download_data(self, subfolder="", overwrite=False):
+    def download_data(self, subfolder="/luna4/maye/l3_data", overwrite=False):
         p = Path(subfolder)
         p.mkdir(exist_ok=True)
         savepath = p / self.fname
-        if savepath.exists():
-            if not overwrite:
-                print("File exists, use `overwrite=True` to force download.")
-                return
+        if savepath.exists() and not overwrite:
+            print("File exists, use `overwrite=True` to force download.")
+            return
         else:
             url_retrieve(self.data_url, Path(subfolder) / self.fname)
