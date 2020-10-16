@@ -101,6 +101,10 @@ class Model(object):
         s2.index = s2.index - day_offset
         return s2
 
+    @property
+    def chi(self):
+        return self.profile.chi
+
     def run(self):
 
         # Equilibrate the model
