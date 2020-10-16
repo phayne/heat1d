@@ -79,6 +79,19 @@ def diurnal_curves(model, ax=None):
     ax.set_title(f"Chi: {model.profile.chi}")
 
 
+def plot_last_surface_cooling(model, ax=None):
+    m = model
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
+
+    m.last_surface_cooling.plot(ax=ax)
+    ax.set_xlabel("Local Time (hr past noon)")
+    ax.set_ylabel("Temperature, $T$ [K]")
+    ax.set_title(f"Chi: {model.profile.chi}")
+
+
 def plot_profile_and_diurnals(model, save=False):
     fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(9, 5))
     profile_plot(model, ax1)
@@ -127,4 +140,3 @@ def degreeLabelFormat(x):
         return r"$%0.0f^\circ$" % x
     else:
         return "%0.0f\u00b0" % x
-

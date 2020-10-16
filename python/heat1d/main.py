@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import planets
 from astropy.constants import sigma_sb
 from numba import jit
@@ -56,6 +57,7 @@ class Model(object):
         # Initialize
         self.planet = planet
         self.lat = lat
+        self.ndays = ndays
         self.Sabs = self.planet.S * (1.0 - self.planet.albedo)
         self.r = self.planet.rAU  # solar distance [AU]
         self.nu = np.float()  # orbital true anomaly [rad]
@@ -88,6 +90,16 @@ class Model(object):
         self.N_z = np.size(self.profile.z)
         self.T = np.zeros([self.N_steps, self.N_z])
         self.lt = np.zeros([self.N_steps])
+
+    @property
+    def last_surface_cooling(self):
+        s = pd.Series(self.T[:, 0], index=self.lt)
+        day_offset = (self.ndays - 1) * 24
+        t1 = day_offset + 7.5
+        t2 = day_offset + 17.5
+        s2 = s[t1:t2]
+        s2.index = s2.index - day_offset
+        return s2
 
     def run(self):
 
