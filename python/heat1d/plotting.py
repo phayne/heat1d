@@ -79,14 +79,14 @@ def diurnal_curves(model, ax=None):
     ax.set_title(f"Chi: {model.profile.chi}")
 
 
-def plot_last_surface_cooling(model, ax=None):
+def plot_last_surface_cooling(model, ax=None, **kwargs):
     m = model
     if ax is None:
         fig, ax = plt.subplots()
     else:
         fig = ax.figure
 
-    m.last_surface_cooling.plot(ax=ax)
+    m.last_surface_cooling.plot(ax=ax, **kwargs)
     ax.set_xlabel("Local Time (hr past noon)")
     ax.set_ylabel("Temperature, $T$ [K]")
     ax.set_title(f"Chi: {model.profile.chi}")
