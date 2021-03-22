@@ -105,3 +105,9 @@ venv.bak/
 .mypy_cache/
 junit.xml
 .vscode/
+
+**/*.zarr
+.zattrs
+.zarray
+.zgroup
+
