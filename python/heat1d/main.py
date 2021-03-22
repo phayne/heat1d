@@ -10,6 +10,7 @@ import pandas as pd
 import planets
 from astropy.constants import sigma_sb
 from numba import jit
+from pandas.tseries.frequencies import to_offset
 
 from . import orbits  # Methods for calculating solar angles from orbits
 
@@ -148,6 +149,22 @@ class Model(object):
         f = (1.0 - albedoVar(self.planet.albedo, a, b, i)) / (1.0 - self.planet.albedo)
         self.Qs = f * self.Sabs * (self.r / self.planet.rAU) ** -2 * c
 
+    def resample_surface_cooling(self, binning="15min"):
+        "Resample the last surface cooling onto regular time grid"
+        s = self.last_surface_cooling
+        # convert localtimes to full DatetimeIndex for resampling
+        model_times = pd.DatetimeIndex([pd.Timestamp(t, unit="h") for t in s.index])
+        s.index = model_times
+        resampled = s.resample(binning).mean()
+        # shift index to center of binning
+        offset = to_offset(binning) / 2
+        resampled.index = resampled.index + offset
+        return resampled
+
+
+def get_datetimeindex(series):
+    "create datetimeindex from float local time hours."
+    return pd.DatetimeIndex([pd.Timestamp(t, unit='h') for t in series.index])
 
 class Profile(object):
     """
