@@ -153,7 +153,7 @@ class Model(object):
         "Resample the last surface cooling onto regular time grid"
         s = self.last_surface_cooling
         # convert localtimes to full DatetimeIndex for resampling
-        model_times = pd.DatetimeIndex([pd.Timestamp(t, unit="h") for t in s.index])
+        model_times = get_datetimeindex(s)
         s.index = model_times
         resampled = s.resample(binning).mean()
         # shift index to center of binning
