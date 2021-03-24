@@ -178,6 +178,8 @@ class Profile(object):
     def __init__(self, planet=planets.Moon, lat=0, config=None):
 
         self.planet = planet
+        self.lat= lat
+        self.config = config
 
         # The spatial grid
         self.emissivity = planet.emissivity
@@ -188,7 +190,6 @@ class Profile(object):
         self.H = planet.H
         cp0 = planet.cp0
         kappa = ks / (rhos * cp0)
-        self.config = config
 
         self.chi = config.chi
         self.R350 = R350(self.chi)
@@ -200,8 +201,9 @@ class Profile(object):
         self.g2 = 2 * self.dz[0:-1] / self.d3z[0:]  # A.K.A. "q" in the Appendix
 
         # Thermophysical properties
-        self.kc = kd - (kd - ks) * np.exp(-self.z / self.H)
-        self.rho = rhod - (rhod - rhos) * np.exp(-self.z / self.H)
+        expTerm = np.exp(-self.z / self.H)
+        self.kc = kd - (kd - ks) * expTerm
+        self.rho = rhod - (rhod - rhos) * expTerm
 
         # Initialize temperature profile
         self.init_T(planet, lat)
