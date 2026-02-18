@@ -134,7 +134,7 @@ x_i = d'_i - c'_i x_{i+1}
 $$
 
 The algorithm is numerically stable for the heat equation because the coefficient
-matrix is always diagonally dominant: $|m_i| = 1 + a_i + b_i > |a_i| + |b_i|$.
+matrix is always diagonally dominant: $\lvert m_i\rvert = 1 + a_i + b_i > \lvert a_i\rvert + \lvert b_i\rvert$.
 
 ## Fourier-Matrix Solver (Frequency Domain)
 

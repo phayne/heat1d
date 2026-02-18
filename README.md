@@ -152,7 +152,7 @@ with the following depth- and temperature-dependent material properties from Hay
 - **Density**: exponential transition from surface (1100 kg/m³) to depth (1800 kg/m³) with scale height $H$
 - **Thermal conductivity**: phonon (contact) conductivity plus a radiative $T^3$ component: $K = K_c \left[1 + \chi (T/350)^3 \right]$
 - **Heat capacity**: 4th-order polynomial in temperature following Hemingway et al. (1981)
-- **Surface boundary**: radiative equilibrium with angle-dependent albedo $A(\theta) = A_0 + a(\theta/45°)^3 + b(\theta/90°)^8$
+- **Surface boundary**: radiative equilibrium with angle-dependent albedo $A(\theta) = A_0 + a(\theta/45{^\circ})^3 + b(\theta/90{^\circ})^8$
 - **Bottom boundary**: constant geothermal heat flux (0.018 W/m² for the Moon)
 
 For full derivations, see the [Theory](python/docs/theory.md) documentation and [Hayne et al. (2017)](https://doi.org/10.1002/2017JE005387).

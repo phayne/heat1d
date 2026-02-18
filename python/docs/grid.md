@@ -15,7 +15,7 @@ $$
 where $P$ is the forcing period (e.g., the diurnal period) and
 $\kappa = K / (\rho c_p)$ is the thermal diffusivity.
 
-For the Moon, $z_s \approx 4\text{--}7$ cm depending on the H-parameter and
+For the Moon, $z_s \approx 4$--$7$ cm depending on the H-parameter and
 temperature-dependent thermal properties (Hayne et al., 2017). The grid is
 constructed using surface-minimum properties ($\sim 3$ cm), which ensures
 adequate resolution near the surface where gradients are steepest.
