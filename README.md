@@ -13,7 +13,7 @@
 ## Features
 
 - **Four numerical solvers**: Explicit (Forward Euler), Implicit (Backward Euler), Crank-Nicolson, and Fourier-matrix (frequency domain)
-- **Temperature-dependent properties**: thermal conductivity with radiative T^3 term, polynomial heat capacity
+- **Temperature-dependent properties**: thermal conductivity with radiative $T^3$ term, polynomial heat capacity
 - **Depth-dependent profiles**: exponential density/conductivity transition with custom layer support
 - **Angle-dependent albedo** following Keihm (1984)
 - **Non-uniform spatial grid** with geometrically increasing layer spacing
@@ -100,9 +100,9 @@ Peak daytime temperatures decrease with latitude due to lower solar incidence an
 
 | Solver | Method | Stability | Time Accuracy | Typical Steps/Day | Relative Speed |
 |---|---|---|---|---|---|
-| **Explicit** | Forward Euler | CFL-limited | O(dt) | ~830 | 1x |
-| **Implicit** | Backward Euler + TDMA | Unconditional | O(dt) | ~24 | ~35x |
-| **Crank-Nicolson** | Semi-implicit + TDMA | Unconditional | O(dt^2) | ~24 | ~35x |
+| **Explicit** | Forward Euler | CFL-limited | $O(\Delta t)$ | ~830 | 1x |
+| **Implicit** | Backward Euler + TDMA | Unconditional | $O(\Delta t)$ | ~24 | ~35x |
+| **Crank-Nicolson** | Semi-implicit + TDMA | Unconditional | $O(\Delta t^2)$ | ~24 | ~35x |
 | **Fourier-matrix** | Frequency domain | N/A (periodic) | Spectral | N/A | ~1000x |
 
 ![Solver Comparison](docs/images/solver_comparison.png)
@@ -141,15 +141,15 @@ Install with `pip install "heat1d[gui]"` and launch with `heat1d-gui`.
 
 `heat1d` solves the 1-D heat equation in porous planetary regolith:
 
-&rho; c<sub>p</sub> &part;T/&part;t = &part;/&part;z (K &part;T/&part;z)
+$$\rho \, c_p \frac{\partial T}{\partial t} = \frac{\partial}{\partial z} \left( K \frac{\partial T}{\partial z} \right)$$
 
 with the following depth- and temperature-dependent material properties from Hayne et al. (2017):
 
-- **Density**: exponential transition from surface (1100 kg/m^3) to depth (1800 kg/m^3) with scale height H
-- **Thermal conductivity**: phonon (contact) conductivity plus a radiative T^3 component: K = K<sub>c</sub>[1 + &chi;(T/350)^3]
+- **Density**: exponential transition from surface (1100 kg/m³) to depth (1800 kg/m³) with scale height $H$
+- **Thermal conductivity**: phonon (contact) conductivity plus a radiative $T^3$ component: $K = K_c \left[1 + \chi (T/350)^3 \right]$
 - **Heat capacity**: 4th-order polynomial in temperature following Hemingway et al. (1981)
-- **Surface boundary**: radiative equilibrium with angle-dependent albedo A(&theta;) = A<sub>0</sub> + a(&theta;/45&deg;)^3 + b(&theta;/90&deg;)^8
-- **Bottom boundary**: constant geothermal heat flux (0.018 W/m^2 for the Moon)
+- **Surface boundary**: radiative equilibrium with angle-dependent albedo $A(\theta) = A_0 + a(\theta/45°)^3 + b(\theta/90°)^8$
+- **Bottom boundary**: constant geothermal heat flux (0.018 W/m² for the Moon)
 
 For full derivations, see the [Theory](python/docs/theory.rst) documentation and [Hayne et al. (2017)](https://doi.org/10.1002/2017JE005387).
 
