@@ -63,18 +63,47 @@ from heat1d.validation import run_validation_suite
 results = run_validation_suite(solver="explicit", nyearseq=5)
 ```
 
-The validation suite generates four plots:
+## Validation Plots
 
-1. **Diurnal equator curve** -- Surface temperature vs. local time at the equator,
-   with reference values marked
-2. **Multi-latitude diurnal curves** -- Surface temperature at 0, 15, 30, 45, 60,
-   and 75 degrees latitude
-3. **Nighttime cooling curves** -- Surface temperature during the lunar night at
-   multiple latitudes with Diviner regolith temperature observations, similar
-   to Figure A2
-4. **Mean temperature vs. latitude** -- Diurnal mean surface and subsurface
-   temperature vs. latitude, with Apollo 15 and 17 reference data and error bars
-   for both surface and subsurface measurements
+The validation suite generates four diagnostic plots, shown below using the
+Fourier-matrix solver with Hayne et al. (2017) standard parameters.
+
+### Diurnal Equator Curve
+
+Surface temperature vs. local time at the equator, with Table A2 reference
+values and tolerance bands marked. The model closely matches the peak noon
+temperature (385 K), midnight temperature (101 K), and minimum nighttime
+temperature (95 K).
+
+![Diurnal temperature at the equator with reference values](../../docs/images/validation_diurnal_equator.png)
+
+### Multi-Latitude Diurnal Curves
+
+Surface temperature at 0, 15, 30, 45, 60, and 75 degrees latitude. Peak
+daytime temperatures decrease with latitude due to lower solar incidence
+angles, while nighttime temperatures converge as all surfaces radiate to
+the same cold sky.
+
+![Diurnal surface temperature at multiple latitudes](../../docs/images/validation_multilatitude.png)
+
+### Nighttime Cooling Curves
+
+Surface temperature during the lunar night at multiple latitudes, overlaid
+with Diviner Lunar Radiometer regolith temperature observations. The model
+reproduces the observed nighttime cooling behavior across all available
+latitudes (similar to Figure A2 of Hayne et al., 2017).
+
+![Nighttime cooling curves with Diviner observations](../../docs/images/validation_nighttime_cooling.png)
+
+### Mean Temperature vs. Latitude
+
+Diurnal mean surface and subsurface temperature vs. latitude using mare
+albedo, with Apollo 15 and 17 heat flow experiment data shown as points
+with error bars. Surface measurements (squares) and subsurface measurements
+at 0.13 m and 0.83 m depth (triangles) all fall within the published
+uncertainties.
+
+![Mean diurnal temperature vs. latitude with Apollo data](../../docs/images/validation_mean_T_vs_latitude.png)
 
 ## Validation Results
 
@@ -94,3 +123,15 @@ pass. The Apollo checks use a finer grid (m=20, b=30) and longer equilibration
 [PASS] apollo17_subsurface_mean_T: 255.4 K (ref: 256.0 +/- 5.0 K)
 8/8 checks passed
 ```
+
+### Regenerating Plots
+
+To regenerate the validation plots for the documentation:
+
+```bash
+python docs/generate_validation_plots.py
+```
+
+This produces four PNG files in `docs/images/` using the Fourier-matrix solver
+(fastest). The full validation suite (`heat1d --validate`) generates additional
+comparison plots across all four solvers.
