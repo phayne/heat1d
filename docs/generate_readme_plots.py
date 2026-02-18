@@ -135,13 +135,11 @@ def plot_depth_heatmap(model, outdir):
     pcm = ax.pcolormesh(lt_edges, z_edges, T_plot.T, cmap="magma", shading="flat")
     cb = fig.colorbar(pcm, ax=ax, label="Temperature [K]")
 
-    # Mark 1 thermal skin depth
-    from heat1d.grid import skinDepth
-    planet = _make_planet()
-    kappa = planet.ks / (planet.rhos * 600)  # approximate diffusivity
-    z_s_cm = skinDepth(planet.day, kappa) * 100
+    # Mark effective thermal skin depth from Hayne et al. (2017):
+    # ~7 cm accounting for temperature-dependent K and cp
+    z_s_cm = 7.0
     ax.axhline(z_s_cm, color="white", ls="--", lw=1.2, alpha=0.8)
-    ax.text(0.3, z_s_cm + 0.6, f"1 skin depth ({z_s_cm:.1f} cm)",
+    ax.text(0.3, z_s_cm + 0.8, f"thermal skin depth (~{z_s_cm:.0f} cm)",
             color="white", fontsize=9, alpha=0.9)
 
     ax.set_xlabel("Local Time [hr]")

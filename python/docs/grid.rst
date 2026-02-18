@@ -16,7 +16,10 @@ of a periodic temperature wave:
 where :math:`P` is the forcing period (e.g., the diurnal period) and
 :math:`\kappa = K / (\rho c_p)` is the thermal diffusivity.
 
-For the Moon with surface properties, :math:`z_s \approx 4\text{--}5` cm.
+For the Moon, :math:`z_s \approx 4\text{--}7` cm depending on the H-parameter and
+temperature-dependent thermal properties (Hayne et al., 2017).  The grid is
+constructed using surface-minimum properties (:math:`\sim 3` cm), which ensures
+adequate resolution near the surface where gradients are steepest.
 
 Grid Construction
 -----------------

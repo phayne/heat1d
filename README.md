@@ -84,7 +84,7 @@ print(f"Grid: {model.N_z} layers to {model.profile.z[-1]:.2f} m depth")
 
 ### Temperature vs. Depth and Local Time
 
-The thermal wave penetrates only a few centimeters into lunar regolith. Below the thermal skin depth (~3 cm), diurnal variations are strongly damped.
+The thermal wave penetrates only a few centimeters into lunar regolith. Below the thermal skin depth (~7 cm, accounting for temperature-dependent conductivity and heat capacity), diurnal variations are strongly damped.
 
 ![Depth Heatmap](docs/images/depth_heatmap.png)
 
