@@ -22,8 +22,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include "heat1dfun.h"
+#include "fourier_solver.h"
 
 /* ***********
  * Constants *
@@ -37,9 +39,6 @@
 #define NSKIN     10.0 // ratio of skin depth to first layer thickness: z_skin / dz[0]
 #define NSKINBOT  20.0 //number of skin depths to bottom layer
 #define NN        5   //scale factor for increasing layer thick. (low = fast inc.; 5 = nominal)
-
-// Maximum model layers
-#define MAXLAYERS 1000
 
 // Temperature initialization
 // This can be adjusted to decrease equilibration time at depth
@@ -58,6 +57,15 @@
  */
 int tiProfile( profileT *p, double h, double latitude, double ti );
 
+/*
+ * readFluxFile()
+ * -- reads an external flux time series from a text file
+ * -- format: comment lines starting with '#', then "dt nsteps" line,
+ *    then one flux value per line (W/m^2)
+ * -- returns allocated flux array (caller must free), or NULL on error
+ */
+double *readFluxFile( const char *path, double *dt_out, int *nsteps_out );
+
 /* **************
  * Main Program *
  * **************/
@@ -67,15 +75,20 @@ int main( int argc, char *argv[] ) {
   double hour, latitude, ti, h, endtime, slope;
   profileT *p;
 
-  // Check for correct arguments (no error checking yet!)
-  if ( argc != 5 ) {
+  // Check for correct arguments
+  if ( argc < 5 || argc > 10 ) {
     printf("\n");
     printf("Usage:\n");
-    printf("  heat1d_moon [lat] [T.I.] [H] [albedo]\n\n");
+    printf("  heat1d_moon [lat] [T.I.] [H] [albedo] [solver] [equil_nperday] [nperday_output] [adaptive_tol] [flux_file]\n\n");
     printf("    [lat] -- latitude in degrees\n");
     printf("    [T.I.] -- thermal inertia at 273 K [SI units] (50 for typical regolith)\n");
     printf("    [H] -- H-parameter = scale height of TI increase (0.06 is typical)\n");
     printf("    [albedo] -- solar bolometric albedo of surface\n");
+    printf("    [solver] -- 0=explicit, 1=crank-nicolson, 2=implicit, 3=fourier\n");
+    printf("    [equil_nperday] -- time steps/day for equilibration (default: %d)\n", NPERDAY);
+    printf("    [nperday_output] -- output samples/day (default: %d)\n", NPERDAY);
+    printf("    [adaptive_tol] -- adaptive step-doubling tolerance [K] (0=off, default: 0)\n");
+    printf("    [flux_file] -- optional external flux file (overrides radFlux for output phase)\n");
     printf("\n");
     return ( 1 );
   }
@@ -102,6 +115,33 @@ int main( int argc, char *argv[] ) {
   p->rotperiod = PSYNODIC;
   p->obliq = OBLIQUITY;
   p->albedo = atof(argv[4]);
+  p->solver = ( argc >= 6 ) ? atoi(argv[5]) : SOLVER_EXPLICIT;
+  p->equil_nperday = ( argc >= 7 ) ? atoi(argv[6]) : NPERDAY;
+  p->nperday_output = ( argc >= 8 ) ? atoi(argv[7]) : NPERDAY;
+  p->adaptive_tol = ( argc >= 9 ) ? atof(argv[8]) : 0.0;
+
+  // Initialize external flux fields (NULL = compute on-the-fly)
+  p->flux_input = NULL;
+  p->flux_input_len = 0;
+  p->flux_input_dt = 0.0;
+
+  // Read optional external flux file
+  double *flux_data = NULL;
+  if ( argc >= 10 ) {
+    double flux_dt;
+    int flux_nsteps;
+    flux_data = readFluxFile(argv[9], &flux_dt, &flux_nsteps);
+    if ( !flux_data ) {
+      fprintf(stderr, "Error reading flux file: %s\n", argv[9]);
+      free(p);
+      return ( -1 );
+    }
+    p->flux_input = flux_data;
+    p->flux_input_len = flux_nsteps;
+    p->flux_input_dt = flux_dt;
+    fprintf(stderr, "Loaded external flux: %d samples, dt=%.2f s, duration=%.1f s\n",
+            flux_nsteps, flux_dt, flux_nsteps * flux_dt);
+  }
 
   // When to stop the simulation
   endtime =  (NYEARSEQ + NYEARSOUT) * getSecondsPerYear(p) + (p->rotperiod)*(NDAYSOUT + ENDHOUR/24.0);
@@ -109,14 +149,17 @@ int main( int argc, char *argv[] ) {
   // Generate model grid and thermophysical profile
   if (!tiProfile(p, h, latitude, ti)) {
     fprintf(stderr, "Error initializing profile\n");
+    free(flux_data);
+    free(p);
     return ( -1 );
   }
 
   // Run the model
   thermalModel( p, endtime, stdout );
-  
+
   // Free memory
   freeProfile(p);
+  free(flux_data);
   free( p );
 
   // Done.
@@ -193,7 +236,77 @@ int tiProfile( profileT *p, double h, double latitude, double ti ) {
   }
   
   fclose(fpout);
-  
+
   return ( 1 );
+
+}
+
+double *readFluxFile( const char *path, double *dt_out, int *nsteps_out ) {
+
+  FILE *fp;
+  char line[256];
+  double dt;
+  int nsteps = 0, i;
+  double *flux;
+
+  fp = fopen(path, "r");
+  if ( !fp ) {
+    fprintf(stderr, "readFluxFile: cannot open '%s'\n", path);
+    return NULL;
+  }
+
+  // Skip comment lines (starting with '#') and read "dt nsteps" line
+  while ( fgets(line, sizeof(line), fp) ) {
+    // Skip blank lines and comment lines
+    if ( line[0] == '#' || line[0] == '\n' || line[0] == '\r' )
+      continue;
+    // First non-comment line: dt nsteps
+    if ( sscanf(line, "%lf %d", &dt, &nsteps) != 2 ) {
+      fprintf(stderr, "readFluxFile: expected 'dt nsteps' on first data line\n");
+      fclose(fp);
+      return NULL;
+    }
+    break;
+  }
+
+  if ( nsteps <= 0 || dt <= 0.0 ) {
+    fprintf(stderr, "readFluxFile: invalid dt=%.4g or nsteps=%d\n", dt, nsteps);
+    fclose(fp);
+    return NULL;
+  }
+
+  // Allocate flux array
+  flux = (double *) malloc( nsteps * sizeof(double) );
+  if ( !flux ) {
+    fprintf(stderr, "readFluxFile: malloc failed for %d samples\n", nsteps);
+    fclose(fp);
+    return NULL;
+  }
+
+  // Read flux values, skipping comment lines
+  i = 0;
+  while ( i < nsteps && fgets(line, sizeof(line), fp) ) {
+    if ( line[0] == '#' || line[0] == '\n' || line[0] == '\r' )
+      continue;
+    if ( sscanf(line, "%lf", &flux[i]) != 1 ) {
+      fprintf(stderr, "readFluxFile: parse error at sample %d\n", i);
+      free(flux);
+      fclose(fp);
+      return NULL;
+    }
+    i++;
+  }
+
+  fclose(fp);
+
+  if ( i < nsteps ) {
+    fprintf(stderr, "readFluxFile: expected %d samples but read %d\n", nsteps, i);
+    free(flux);
+    return NULL;
+  }
+
+  *dt_out = dt;
+  *nsteps_out = nsteps;
+  return flux;
 
 }

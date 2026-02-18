@@ -1,0 +1,38 @@
+# Moon thermal model with JPL Horizons illumination
+#
+# Uses real ephemeris data from JPL Horizons to compute solar flux.
+# Requires network access.
+#
+# Run:
+#   heat1d moon_horizons.yaml --use-spice
+#   heat1d moon_horizons.yaml --use-spice --lat 26 --lon 3.6
+#
+# The horizons section provides defaults that can be overridden on
+# the command line with --start-time, --stop-time, --lon, --body-id.
+
+planet:
+  name: "Moon"
+
+latitude: 0.0
+ndays: 1
+
+solver: "implicit"
+
+horizons:
+  enabled: true
+  lon: 0.0
+  start_time: "2024-06-15 12:00"
+  # stop_time: "2024-07-15 12:00"   # alternative to ndays
+  # body_id: "301"                  # auto-detected from planet name
+  eclipses:
+    enabled: true                   # auto-detected for satellites
+    # parent_body_id: "399"         # auto-detected from body ID
+
+numerical:
+  accuracy: 1.0
+  output_interval: 53130
+  equilibration_years: 1
+
+output:
+  directory: "output/horizons"
+  prefix: "moon_horizons"

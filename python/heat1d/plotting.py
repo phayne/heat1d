@@ -13,7 +13,13 @@ import numpy as np
 
 
 # look at plt.style.available for other styles
-plt.style.use("seaborn")
+try:
+    plt.style.use("seaborn-v0_8")
+except OSError:
+    try:
+        plt.style.use("seaborn")
+    except OSError:
+        pass  # fall back to default style
 
 # mpl.rcParams["figure.constrained_layout.use"] = True
 # plt.rcParams.update(
@@ -49,7 +55,7 @@ def profile_plot(model, ax=None):
     ax.legend(frameon=False)
     # ax1.set_ylim(np.nanmax(m.profile.z), m.profile.z[1])
     ax.set_ylim(1.5, m.profile.z[1])
-    ax.set_title(f"Chi: {model.profile.chi}")
+    ax.set_title("Temperature Profile")
 
 
 def diurnal_curves(model, ax=None):
@@ -76,7 +82,7 @@ def diurnal_curves(model, ax=None):
     ax.legend(frameon=False, title="Depth (m):", fontsize=8)
     ax.set_xlabel("Local Time (hr past noon)")
     ax.set_ylabel("Temperature, $T$ [K]")
-    ax.set_title(f"Chi: {model.profile.chi}")
+    ax.set_title("Diurnal Temperature")
 
 
 def plot_profile_and_diurnals(model, save=False):
@@ -89,13 +95,13 @@ def plot_profile_and_diurnals(model, save=False):
 
 def compare_model_profiles(m1, m2):
     fig, ax = plt.subplots()
-    ax.plot(m1.T.mean(0), m1.profile.z, ls="-", label=f"chi: {m1.profile.chi}")
-    plt.plot(m2.T.mean(0), m2.profile.z, ls="-", label=f"chi: {m2.profile.chi}")
+    ax.plot(m1.T.mean(0), m1.profile.z, ls="-", label="Model 1")
+    plt.plot(m2.T.mean(0), m2.profile.z, ls="-", label="Model 2")
     ax.legend()
     profile_axes_labels(ax)
     ax.set_yscale("log")
     ax.set_ylim(1.5, m1.profile.z[1])
-    ax.set_title("Average T-profile for different chi values")
+    ax.set_title("Average T-profile Comparison")
 
 
 def setStyle():

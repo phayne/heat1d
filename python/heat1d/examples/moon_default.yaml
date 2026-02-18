@@ -1,0 +1,41 @@
+# Default configuration for the Moon thermal model
+# Based on Hayne et al. (2017), JGR Planets
+# https://doi.org/10.1002/2017JE005387
+
+planet:
+  name: "Moon"
+  # Override any planet property from the `planets` package:
+  # albedo: 0.12
+  # emissivity: 0.95
+  # ks: 7.4e-4          # surface conductivity [W/m/K]
+  # kd: 3.4e-3          # deep conductivity [W/m/K]
+  # rhos: 1100.0        # surface density [kg/m^3]
+  # rhod: 1800.0        # deep density [kg/m^3]
+  # H: 0.07             # H-parameter [m]
+  # cp0: 600.0          # reference heat capacity [J/kg/K]
+  # Qb: 0.018           # interior heat flow [W/m^2]
+
+latitude: 0.0             # degrees
+ndays: 1                  # number of output days
+
+solver: "implicit"        # "explicit", "crank-nicolson", "implicit", or "fourier-matrix"
+
+numerical:
+  accuracy: 1.0               # Temperature accuracy [K] for adaptive timestepping
+  output_interval: 53130      # Output spacing [s] (~0.5 local hours for Moon)
+  fourier_number: 0.5         # must be <= 0.5 for stability (explicit only)
+  layers_per_skin_depth: 10
+  layer_growth_factor: 5
+  skin_depths_to_bottom: 20
+  # dt_init: 106260           # initial solver dt [s] for implicit/CN (usually not needed)
+  surface_temp_accuracy: 0.1  # [K]
+  bottom_temp_accuracy: 0.1   # [K]
+  equilibration_years: 1
+
+physical:
+  solar_constant: 1361.0      # [W/m^2]
+  radiative_conductivity: 2.7 # chi parameter
+
+output:
+  directory: "output/"
+  prefix: "moon_eq"

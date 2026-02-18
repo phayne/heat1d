@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "heat1d"
+version = "0.4.0"
+description = "Thermal model for planetary science applications"
+readme = "README.rst"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Paul O. Hayne", email = "paul.hayne@lasp.colorado.edu"},
+]
+maintainers = [
+    {name = "K.-Michael Aye", email = "kmichael.aye@gmail.com"},
+]
+keywords = ["thermal model", "planetary science", "heat conduction"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+    "click>=7.0",
+    "numba>=0.57",
+    "numpy",
+    "matplotlib",
+    "planets>=0.4.6",
+    "pyyaml>=5.0",
+    "astropy",
+    "scipy",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "flake8",
+    "sphinx",
+    "sphinx-rtd-theme",
+]
+gui = [
+    "PySide6>=6.5",
+]
+
+[project.scripts]
+heat1d = "heat1d.cli:main"
+heat1d-gui = "heat1d.gui.app:main"
+generate-flux = "heat1d.generate_flux:main"
+
+[project.urls]
+Homepage = "https://github.com/phayne/heat1d"
+Documentation = "https://heat1d.readthedocs.io"
+Repository = "https://github.com/phayne/heat1d"
+
+[tool.setuptools.packages.find]
+include = ["heat1d*"]
+
+[tool.setuptools.package-data]
+"heat1d.examples" = ["*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--ignore=setup.py --tb=native --strict-markers --durations=20"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.flake8]
+max-line-length = 100
+ignore = ["E122", "E123", "E126", "E217", "E128", "E731", "E722"]
+exclude = ["build", "docs", "tests", "conda.recipe", ".git", "benchmarks", ".asv"]

@@ -4,6 +4,9 @@
  * from elements
  */
 
+#ifndef ORBITFUN_H
+#define ORBITFUN_H
+
 // Function prototypes
 
 void orbitParams( double a, double ecc, double obliq,
@@ -13,3 +16,5 @@ void orbitParams( double a, double ecc, double obliq,
 double cosSolarZenith( double lat, double dec, double h );
 
 double hourAngle( double t, double p );
+
+#endif /* ORBITFUN_H */

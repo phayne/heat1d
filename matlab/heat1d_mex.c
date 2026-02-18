@@ -34,9 +34,6 @@
 #define NSKINBOT  100.0 //number of skin depths to bottom layer
 #define NN        5   //scale factor for increasing layer thick. (low = fast inc.; 5 = nominal)
 
-// Maximum model layers
-#define MAXLAYERS 1000
-
 #define NANVALUE -999
 
 // Temperature initialization
@@ -73,8 +70,8 @@ void mexFunction( int nlhs, mxArray *plhs[],
     profileT *p;
 
     /* Check for proper number of arguments */
-    if (nrhs != 9) {
-	mexErrMsgTxt("9 input arguments required.");
+    if (nrhs < 9 || nrhs > 10) {
+	mexErrMsgTxt("9 or 10 input arguments required (10th = solver: 0=explicit, 1=CN, 2=implicit).");
     } else if (nlhs > 2) {
 	mexErrMsgTxt("Improper number of output arguments: 1 or 2 required.");
     }
@@ -131,6 +128,7 @@ void mexFunction( int nlhs, mxArray *plhs[],
     p->obliq = OBLIQUITY;
     p->albedo = albedo;
 		p->chi = chi;
+    p->solver = ( nrhs >= 10 ) ? (int)*(mxGetPr(prhs[9])) : SOLVER_EXPLICIT;
 
     //DEBUG
     //mexPrintf("Initializing thermophysical profile...\n");
@@ -151,7 +149,7 @@ void mexFunction( int nlhs, mxArray *plhs[],
 
     /* Run thermal model */
     if (!thermMex( p, ohour, otemp, nout)) {
-      fprintf(stderr, "thermMex returned error\n");
+      mexPrintf("thermMex returned error\n");
     }
 
     // Free memory
@@ -180,11 +178,10 @@ void thermalModel( profileT *p, double endtime,
 		   double *ohour, double *otemp, int nout ) {
 
   long int i, j, k, l, idx;
-  double time, dtime, x, nu, dec, r, tt, f;
+  double time, dtime, nu, dec, r, tt;
   double *timeArr, **tempArr;
-
-  // x is the time step where we start writing output
-  x = NYEARSEQ * getSecondsPerYear(p);
+  int saved_solver;
+  double equiltime;
 
   // Constant grid parameters
   gridParams( p );
@@ -206,80 +203,79 @@ void thermalModel( profileT *p, double endtime,
   dtime = 0.0;
   updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
 
-  // Time step and interval for writing output
-  dtime = getTimeStep( p );
-  i = ceil(p->rotperiod / dtime);
-  i = ( NPERDAY > i ) ? NPERDAY : i;
+  equiltime = NYEARSEQ * getSecondsPerYear(p);
+
+  // --- Phase 1: Equilibration using implicit solver for speed ---
+  saved_solver = p->solver;
+  p->solver = SOLVER_IMPLICIT;
+  dtime = p->rotperiod / NPERDAY;
+
+  time = 0.0;
+  while ( time < equiltime ) {
+    updateTemperatures( p, time, dtime, dec, r );
+    heatCapProf( p );
+    getModelParams( p );
+    thermCondProf( p );
+    time += dtime;
+    updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
+  }
+
+  // --- Phase 2: Output using user's solver ---
+  p->solver = saved_solver;
+
+  // Recompute time step for output solver
+  if ( p->solver == SOLVER_EXPLICIT ) {
+    dtime = getTimeStep( p );
+    i = ceil(p->rotperiod / dtime);
+    i = ( NPERDAY > i ) ? NPERDAY : i;
+  } else {
+    i = NPERDAY;
+  }
   dtime = (p->rotperiod) / i;
   k = floor(i / NPERDAY);
   if (!k) k = 1;
 
   // Allocate memory for time and temperature arrays
   timeArr = (double *) malloc( sizeof(double) * i );
-  tempArr = (double **) malloc( sizeof(double) * p->nlayers );
+  tempArr = (double **) malloc( sizeof(double *) * p->nlayers );
   for (l=0; l<p->nlayers; l++) {
     tempArr[l] = (double *) malloc( sizeof(double) * i );
   }
 
-  // index for printing output only so often
-  j  = 0;
-
-  // Step back one time step before writing output
-	// DEBUG: THIS CAUSES ISSUES WITH INTERPOLATION ROUTINE
-  //x -= dtime;
-
-  // Run the model until endtime is reached
-  time = 0.0;
+  // Run output phase from equiltime to endtime
   idx = 0;
+  j = 0;
   while ( time <= endtime ) {
 
     updateTemperatures( p, time, dtime, dec, r );
-
-    // Heat capacity
     heatCapProf( p );
-
-    // Update model params.
     getModelParams( p );
-
-    // Thermal conductivity
     thermCondProf( p );
 
-    time += dtime; // increment time step
-    if ( time > x ) {
-      if ( j==k ) {
-				//tt = (time-x)*24/(p->rotperiod);
-				tt = p->hourangle * 24.0 / TWOPI;
-				//if ( (24-tt) <= CUTOFF ) tt = 0.0;
+    time += dtime;
+    if ( j==k ) {
+      tt = p->hourangle * 24.0 / TWOPI;
 
-				// Update temperature array and increment index
-				timeArr[idx] = tt;
-				for (l=0; l<p->nlayers; l++) {
-	  			tempArr[l][idx] = p->layer[l].t;
-				}
-				//DEBUG
-				//mexPrintf("idx = %d, timeArr[idx] = %.2f, tempArr[idx] = %.2f\n", idx, timeArr[idx], tempArr[0][idx]);
-				//mexPrintf("%.12f %.2f\n", timeArr[idx], tempArr[0][idx]);
-				idx++;
-
-				j = 0;
+      timeArr[idx] = tt;
+      for (l=0; l<p->nlayers; l++) {
+        tempArr[l][idx] = p->layer[l].t;
       }
-      j++;
-    }
+      idx++;
 
-    // Move the body in its orbit
+      j = 0;
+    }
+    j++;
+
     updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
 
   }
 
   // Interpolate results into output array at specified local times
   for (l=0; l<p->nlayers; l++) {
-      for (i=0; i<nout; i++) {
-				otemp[l + p->nlayers*i] = interp1( timeArr, tempArr[l], idx, ohour[i] );
-				//mexPrintf("i = %d, ohour[i] = %.2f, otemp[i] = %.2f\n", i, ohour[i], otemp[i]);
-				//mexPrintf("%.2f %.2f\n", ohour[i], otemp[i]);
-      }
+    for (i=0; i<nout; i++) {
+      otemp[l + p->nlayers*i] = interp1( timeArr, tempArr[l], idx, ohour[i] );
+    }
   }
-	//mexPrintf("nlayers = %d\n", p->nlayers);
 
   for (l=0; l<p->nlayers; l++) free(tempArr[l]);
   free(timeArr);
@@ -351,7 +347,7 @@ int depthProfile( profileT *p, double h, double latitude,
 
   // Make the profile structure array
   if ( !makeProfile(p, nlayers) ) {
-    fprintf(stderr, "Error initializing profile structure array\n");
+    mexPrintf("Error initializing profile structure array\n");
     return( 0 );
   }
 
@@ -426,6 +422,10 @@ void gridParams( profileT *p ) {
   int i;
   double dzprod;
 
+  // Zero-initialize boundary layer grid params (not used by stencil)
+  p->layer[0].d1 = 0;
+  p->layer[0].d2 = 0;
+
   for ( i=1; i<(p->nlayers-1); i++ ) {
 
     dzprod = p->layer[i-1].dz*p->layer[i].dz*(p->layer[i-1].dz+p->layer[i].dz);
@@ -435,23 +435,31 @@ void gridParams( profileT *p ) {
 
   }
 
+  p->layer[p->nlayers-1].d1 = 0;
+  p->layer[p->nlayers-1].d2 = 0;
+
 }
 
 void getModelParams( profileT *p ) {
 
   int i;
 
-  p->layer[0].c1 = p->layer[0].d1 * p->layer[0].k;
-  p->layer[0].c3 = p->layer[0].d2 * p->layer[1].k;
-  p->layer[0].c2 = -( p->layer[0].c1 + p->layer[0].c3 );
+  // Boundary layers: c1/c2/c3 not used (BCs applied separately)
+  p->layer[0].c1 = 0;
+  p->layer[0].c2 = 0;
+  p->layer[0].c3 = 0;
 
-  for ( i=1; i<p->nlayers; i++ ) {
+  for ( i=1; i<(p->nlayers-1); i++ ) {
 
     p->layer[i].c1 = p->layer[i].d1 * p->layer[i-1].k;
     p->layer[i].c3 = p->layer[i].d2 * p->layer[i].k;
     p->layer[i].c2 = -( p->layer[i].c1 + p->layer[i].c3 );
 
   }
+
+  p->layer[p->nlayers-1].c1 = 0;
+  p->layer[p->nlayers-1].c2 = 0;
+  p->layer[p->nlayers-1].c3 = 0;
 
 }
 
@@ -475,23 +483,32 @@ double getTimeStep( profileT *p ) {
 void updateTemperatures( profileT *p, double time, double dtime, double dec, double r ) {
 
   int i;
+  double T0_old, Tn_old;
 
-  for ( i=1; i<(p->nlayers-1); i++ ) {
+  /* Save old boundary temperatures for Crank-Nicolson explicit half */
+  T0_old = p->layer[0].t;
+  Tn_old = p->layer[p->nlayers-1].t;
 
-    p->layer[i].tp += dtime * ( p->layer[i].c1 * p->layer[i-1].t
-			       + p->layer[i].c2 * p->layer[i].t
-			       + p->layer[i].c3 * p->layer[i+1].t ) / p->layer[i].rhocp;
-  }
-
-  for ( i=1; i<(p->nlayers-1); i++ ) {
-    p->layer[i].t = p->layer[i].tp;
-  }
-
+  /* Compute boundary conditions */
   p->layer[0].t = surfTemp( p, time, dec, r );
   p->layer[p->nlayers-1].t = botTemp( p );
 
-	// DEBUG
-	//mexPrintf("dtime = %.2g\n", dtime );
+  /* Dispatch to the appropriate solver */
+  if ( p->solver == SOLVER_CN ) {
+    updateTemperaturesCNMex( p, dtime, T0_old, Tn_old );
+  } else if ( p->solver == SOLVER_IMPLICIT ) {
+    updateTemperaturesImplicitMex( p, dtime );
+  } else {
+    /* Explicit (forward Euler) */
+    for ( i=1; i<(p->nlayers-1); i++ ) {
+      p->layer[i].tp += dtime * ( p->layer[i].c1 * p->layer[i-1].t
+                                   + p->layer[i].c2 * p->layer[i].t
+                                   + p->layer[i].c3 * p->layer[i+1].t ) / p->layer[i].rhocp;
+    }
+    for ( i=1; i<(p->nlayers-1); i++ ) {
+      p->layer[i].t = p->layer[i].tp;
+    }
+  }
 
 }
 
@@ -500,7 +517,7 @@ int makeProfile( profileT *p, int nlayers ) {
   layerT *layer = (layerT *) malloc(nlayers * sizeof(layerT));
 
   if ( layer == NULL ) {
-    printf("Out of memory\n");
+    mexPrintf("Out of memory\n");
     return ( 0 );
   }
   p->layer = layer;
@@ -528,9 +545,6 @@ void radFlux( double time, double dec, double r, profileT *p ) {
   latm = fabs(lat);
   decm = fabs(dec);
 
-  //DEBUG: There is a bug that causes lat=0 to crash
-  if (!lat) lat += 0.00001;
-
   // "hour angle", in radians
   p->hourangle = fmod((TWOPI * time / p->rotperiod),TWOPI);
   h = p->hourangle;
@@ -543,13 +557,19 @@ void radFlux( double time, double dec, double r, profileT *p ) {
   // Derivations for the following geometric relationships are given
   // in Braun and Mitchell (1983), Solar geometry for fixed and tracking
   // surfaces, Solar Energy, 31, 439-444
-  if ( latm <= decm ) {
+  if ( latm < 1e-10 ) {
+    hEW = PIOVERTWO;
+  } else if ( latm <= decm ) {
     hEW = 0;
-  } else hEW = acos(tan(dec)/tan(lat));
+  } else {
+    hEW = acos(tan(dec)/tan(lat));
+  }
 
   if (!sinz) {
     gSO = 0;
-  } else gSO = asin(sin(h)*cos(dec)/sinz);
+  } else {
+    gSO = asin(fmin(1.0, fmax(-1.0, sin(h)*cos(dec)/sinz)));
+  }
 
   if ( fabs(h) < hEW ) {
     sigmaEW = 1;
@@ -682,12 +702,11 @@ double surfTemp( profileT *p, double time, double dec, double r ) {
 
   double cutoff, dt, k, f1, f2, tsurf, tm, rad, tddz, twodz, dtdz;
 
-  // Convergence criterion for delta-t
-  cutoff = ALPHA * p->layer[0].t;
+  // Absolute convergence criterion [K], matching Python/standalone C
+  cutoff = DTSURF;
 
   tsurf = p->layer[0].t;
   dt = tsurf;
-  //tm = 0.5 * (p->layer[1].t + tsurf);
   tm = tsurf;
 
   // Radiation flux at surface
@@ -695,17 +714,16 @@ double surfTemp( profileT *p, double time, double dec, double r ) {
 
   // LATENT HEAT TERM
   p->esub = iceSubRate(tsurf, 1.0);
-  //p->esub = 0.0;
 
-  while ( fabs(dt) > cutoff ) {
-    //tddz = (p->layer[1].t - tsurf)/p->layer[0].dz;
+  // Newton-Raphson iteration with iteration guard (max 100)
+  int iteration, max_iterations = 100;
+  for ( iteration = 0; iteration < max_iterations; iteration++ ) {
+    if ( fabs(dt) <= cutoff && iteration > 0 ) break;
+
     twodz = 2.0*p->layer[0].dz;
     dtdz = (-3*tsurf+4*p->layer[1].t - p->layer[2].t)/twodz;
 
     rad = p->emis * SIGMA * tsurf * tsurf * tsurf * tsurf;
-
-    // This version is for ice sublimation:
-    //rad = p->emis * SIGMA * tsurf * tsurf * tsurf * tsurf + LH2O*p->esub;
 
     k =  thermCond(p->layer[0].kc, p->layer[0].b, tsurf);
     f1 = rad - p->surfflux - k * dtdz;
@@ -715,12 +733,6 @@ double surfTemp( profileT *p, double time, double dec, double r ) {
 
     dt = -f1/f2;
     tsurf += dt;
-
-		//DEBUG
-		//mexPrintf("b = %.2g, k = %.2g, tsurf = %4.1f\n", p->layer[0].b, k, tsurf);
-
-    //tm = 0.5 * (p->layer[1].t + tsurf);
-    //tm = tsurf;
   }
 
   return ( tsurf );
@@ -817,10 +829,93 @@ double hourAngle( double t, double p ) {
 
   h = TWOPI * t / p;
 
-  printf("hourAngle: %.4g %.4g %.4g\n", t, p, h);
-
   return ( h );
 
+}
+
+/* Thomas algorithm (TDMA) for tridiagonal systems */
+void thomas_solveMex( int n, double *lower, double *diag, double *upper,
+                      double *rhs, double *solution ) {
+  int i;
+  double w;
+  double cpr[MAXLAYERS], dpr[MAXLAYERS];
+
+  cpr[0] = upper[0] / diag[0];
+  dpr[0] = rhs[0] / diag[0];
+  for ( i=1; i<n; i++ ) {
+    w = diag[i] - lower[i-1] * cpr[i-1];
+    if ( i < n-1 ) cpr[i] = upper[i] / w;
+    dpr[i] = (rhs[i] - lower[i-1] * dpr[i-1]) / w;
+  }
+  solution[n-1] = dpr[n-1];
+  for ( i=n-2; i>=0; i-- ) {
+    solution[i] = dpr[i] - cpr[i] * solution[i+1];
+  }
+}
+
+/* Fully implicit (backward Euler) interior temperature update */
+void updateTemperaturesImplicitMex( profileT *p, double dtime ) {
+  int i, n_interior;
+  double ai, bi;
+  double lower[MAXLAYERS], diag_arr[MAXLAYERS], upper[MAXLAYERS];
+  double rhs[MAXLAYERS], sol[MAXLAYERS];
+
+  n_interior = p->nlayers - 2;
+  if ( n_interior < 1 ) return;
+
+  for ( i=0; i<n_interior; i++ ) {
+    int li = i + 1;
+    ai = dtime * p->layer[li].d1 * p->layer[li-1].k / p->layer[li].rhocp;
+    bi = dtime * p->layer[li].d2 * p->layer[li].k / p->layer[li].rhocp;
+    diag_arr[i] = 1.0 + ai + bi;
+    rhs[i] = p->layer[li].t;
+    if ( i > 0 ) lower[i-1] = -ai;
+    if ( i < n_interior - 1 ) upper[i] = -bi;
+    if ( i == 0 ) rhs[i] += ai * p->layer[0].t;
+    if ( i == n_interior - 1 ) rhs[i] += bi * p->layer[p->nlayers-1].t;
+  }
+  thomas_solveMex( n_interior, lower, diag_arr, upper, rhs, sol );
+  for ( i=0; i<n_interior; i++ ) {
+    p->layer[i+1].t = sol[i];
+    p->layer[i+1].tp = sol[i];
+  }
+}
+
+/* Crank-Nicolson (semi-implicit) interior temperature update.
+   T0_old/Tn_old are the boundary temperatures BEFORE the new BC update,
+   used for the explicit half of the RHS. The implicit half uses the
+   already-updated p->layer[0].t and p->layer[nlayers-1].t. */
+void updateTemperaturesCNMex( profileT *p, double dtime, double T0_old, double Tn_old ) {
+  int i, n_interior;
+  double ai, bi, ha, hb;
+  double lower[MAXLAYERS], diag_arr[MAXLAYERS], upper[MAXLAYERS];
+  double rhs[MAXLAYERS], sol[MAXLAYERS];
+
+  n_interior = p->nlayers - 2;
+  if ( n_interior < 1 ) return;
+
+  for ( i=0; i<n_interior; i++ ) {
+    int li = i + 1;
+    ai = dtime * p->layer[li].d1 * p->layer[li-1].k / p->layer[li].rhocp;
+    bi = dtime * p->layer[li].d2 * p->layer[li].k / p->layer[li].rhocp;
+    ha = 0.5 * ai;
+    hb = 0.5 * bi;
+    diag_arr[i] = 1.0 + ha + hb;
+    if ( i > 0 ) lower[i-1] = -ha;
+    if ( i < n_interior - 1 ) upper[i] = -hb;
+    /* Explicit half uses old boundary temps; interior uses current */
+    rhs[i] = ha * p->layer[li-1].t
+           + (1.0 - ha - hb) * p->layer[li].t
+           + hb * p->layer[li+1].t;
+    /* Boundary contributions: explicit half uses old, implicit half uses new */
+    if ( i == 0 ) rhs[i] += ha * (T0_old + p->layer[0].t) - ha * p->layer[li-1].t;
+    if ( i == n_interior - 1 ) rhs[i] += hb * (Tn_old + p->layer[p->nlayers-1].t) - hb * p->layer[li+1].t;
+  }
+  thomas_solveMex( n_interior, lower, diag_arr, upper, rhs, sol );
+  for ( i=0; i<n_interior; i++ ) {
+    p->layer[i+1].t = sol[i];
+    p->layer[i+1].tp = sol[i];
+  }
 }
 
 double interp1( double *x, double *y, int n, double xx ) {
@@ -829,7 +924,7 @@ double interp1( double *x, double *y, int n, double xx ) {
   double m, yy;
 
   if ( n < 2 ) {
-    fprintf(stderr, "Error in 'interp1': not enough points for interpolation\n");
+    mexPrintf("Error in 'interp1': not enough points for interpolation\n");
     return( NANVALUE );
   }
 

@@ -105,3 +105,24 @@ venv.bak/
 .mypy_cache/
 junit.xml
 .vscode/
+CLAUDE.md
+.claude/
+
+# macOS
+.DS_Store
+
+# C build artifacts
+*.o
+c/test_validate
+
+# Simulation output (generated data)
+output/
+c/output/
+python/output/
+
+# Generated flux data
+python/flux.txt
+python/heat1d/examples/*_flux.txt
+
+# Development notes (archived)
+archive/notes/

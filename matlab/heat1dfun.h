@@ -62,7 +62,7 @@
 // Scale factor for adjusting thermal inertia
 // This is the baseline thermal inertia, calculated
 // from KD, RHOD, and heat capacity at 250 K
-#define TI0 60
+#define TI0 55
 
 // Constants for Vasavada et al (1999) model of radiative conduction
 // ALTERNATE FUNCTION: B = (chi*R350)*Kc
@@ -81,10 +81,12 @@
 
 // Fourier mesh number (<1/2 for stability)
 #define FOM   0.49
-#define ALPHA 0.01     //Convergence criterion for surfTemp()
+#define DTSURF 0.1     //Absolute convergence criterion for surfTemp() [K]
+#define ALPHA 0.01     //Convergence criterion for surfTemp() (legacy, unused)
 
 // Number of orbital cycles to equilibrate simulation
-#define NYEARSEQ 25
+// (reduced from 25 to 1 since equilibration now uses implicit solver)
+#define NYEARSEQ 1
 
 // Number of orbital cycles and days to output, and end local time
 #define NYEARSOUT 0
@@ -118,6 +120,14 @@
 #define DAZ   5
 
 #define MAXLEN      100        //Maximum string length
+#define MAXLAYERS   1000       //Maximum number of model layers
+
+/***********************************
+ * Solver selection constants      *
+ ***********************************/
+#define SOLVER_EXPLICIT 0
+#define SOLVER_CN       1
+#define SOLVER_IMPLICIT 2
 
 /***********************************
  * Model structures and data types *
@@ -134,6 +144,7 @@ typedef struct {
 // Profiles are made up of layers and body-specific properties
 typedef struct {
   int nlayers;
+  int solver;  // SOLVER_EXPLICIT, SOLVER_CN, or SOLVER_IMPLICIT
   double albedo, emis, latitude, slopecos, slopesin, az, dsquared;
   double chi;
   double rau, rotperiod, obliq;
@@ -193,3 +204,7 @@ double vaporPressureIce( double t );
 int depthProfile( profileT *p, double h, double latitude,
 		  double rhos, double rhod, double ks, double kd );
 double interp1( double *x, double *y, int n, double xx );
+void thomas_solveMex( int n, double *lower, double *diag, double *upper,
+                      double *rhs, double *solution );
+void updateTemperaturesImplicitMex( profileT *p, double dtime );
+void updateTemperaturesCNMex( profileT *p, double dtime, double T0_old, double Tn_old );

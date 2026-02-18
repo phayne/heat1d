@@ -58,8 +58,6 @@ double hourAngle( double t, double p ) {
 
   h = TWOPI * t / p;
 
-  printf("hourAngle: %.4g %.4g %.4g\n", t, p, h);
-
   return ( h );
 
 }

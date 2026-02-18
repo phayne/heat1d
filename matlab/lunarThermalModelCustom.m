@@ -1,8 +1,8 @@
 function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, chi, ...
-                                      loctime, depth, latitude, albedo )
+                                      loctime, depth, latitude, albedo, solver )
 
 % function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, chi, ...
-%                                      loctime, depth, latitude, albedo )
+%                                      loctime, depth, latitude, albedo, solver )
 % -------------------------------------------------------------------------
 % Lunar thermal model for calculating temperatures using standard
 % thermophysical properties.
@@ -17,6 +17,7 @@ function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, chi, ...
 %   depth = depth in meters [mx1]
 %   latitude = unsigned latitude in degrees [1]
 %   albedo = albedo [1]
+%   solver = (optional) solver scheme: 0=explicit (default), 1=crank-nicolson, 2=implicit
 % Outputs [dimensions]:
 %   t = temperature in Kelvin [mxn]
 %
@@ -44,9 +45,12 @@ function t = lunarThermalModelCustom( H, rhos, rhod, ks, kd, chi, ...
 % Help message: %
 % %%%%%%%%%%%%%%%
 
-if (nargin ~= 10)
+if (nargin < 10 || nargin > 11)
     help(sprintf('%s',mfilename))
     return
+end
+if (nargin < 11)
+    solver = 0;  % default: explicit
 end
 
 % %%%%%%%%%%%%%%%%%
@@ -111,7 +115,7 @@ t = zeros(m,n);
 % Optionally print time to execute program
 %fprintf('Running model...\n')
 %c = cputime();
-[t0, z] = heat1d_mex(H, rhos, rhod, ks, kd, chi, latitude, albedo, loctime);
+[t0, z] = heat1d_mex(H, rhos, rhod, ks, kd, chi, latitude, albedo, loctime, solver);
 %fprintf('             ...done in: %f seconds\n',cputime()-c)
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

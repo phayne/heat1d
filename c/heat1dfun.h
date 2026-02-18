@@ -4,6 +4,9 @@
  * AUTHOR: Paul O. Hayne
  */
 
+#ifndef HEAT1DFUN_H
+#define HEAT1DFUN_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -74,10 +77,12 @@
 
 // Fourier mesh number (<1/2 for stability)
 #define FOM   0.49
-#define ALPHA 0.01     //Convergence criterion for surfTemp()
+#define DTSURF 0.1     //Absolute convergence criterion for surfTemp() [K]
+#define ALPHA 0.01     //Convergence criterion for surfTemp() (legacy, unused)
 
 // Number of orbital cycles to equilibrate simulation
-#define NYEARSEQ 25
+// (reduced from 25 to 1 since equilibration now uses implicit solver)
+#define NYEARSEQ 1
 
 // Number of orbital cycles and days to output, and end local time
 #define NYEARSOUT 0
@@ -111,6 +116,15 @@
 #define DAZ   5
 
 #define MAXLEN      100        //Maximum string length
+#define MAXLAYERS   1000       //Maximum number of model layers
+
+/***********************************
+ * Solver selection constants      *
+ ***********************************/
+#define SOLVER_EXPLICIT 0
+#define SOLVER_CN       1
+#define SOLVER_IMPLICIT 2
+#define SOLVER_FOURIER  3
 
 /***********************************
  * Model structures and data types *
@@ -119,18 +133,32 @@
 // Each layer is a structure with its own thermophysical properties
 // and constant grid parameters
 typedef struct {
-  double z, dz, rho, kc, b, k, cp, rhocp, t;
+  double z, dz, rho, kc, b, k, cp, rhocp, t, tp;
   double c1, c2, c3;
   double d1, d2;
 } layerT;
 
 // Profiles are made up of layers and body-specific properties
+//
+// Epoch convention (t=0): the subsolar point (local noon), i.e. hourangle=0.
+// After equilibration (integer orbital periods), the orbital state returns to
+// its initial value and time is reset to 0.  Any external flux_input array
+// must be aligned so that flux_input[0] corresponds to this epoch.
 typedef struct {
   int nlayers;
-  double albedo, emis, latitude, slopecos, slopesin, az, dsquared;
+  int solver;  // SOLVER_EXPLICIT, SOLVER_CN, SOLVER_IMPLICIT, or SOLVER_FOURIER
+  double albedo, alb_a, alb_b;  // albedo and angle-dependent coefficients
+  double emis, latitude, slopecos, slopesin, az, dsquared;
   double rau, rotperiod, obliq;
   double surfflux, esub;
   double hourangle;
+  int equil_nperday;    // time steps per day during equilibration (default: NPERDAY)
+  int nperday_output;   // output samples per day (default: NPERDAY)
+  double adaptive_tol;  // adaptive step-doubling tolerance [K]; 0 = disabled
+  // External flux time series (optional; NULL = compute on-the-fly via radFlux)
+  const double *flux_input;  // absorbed flux values [W/m^2], length flux_input_len
+  int flux_input_len;        // number of flux samples
+  double flux_input_dt;      // uniform time spacing of flux samples [s]
   layerT *layer;
 } profileT;
 
@@ -141,6 +169,8 @@ typedef struct {
 // TO DO: Provide text description of each function!!!
 
 void thermalModel( profileT *p, double endtime, FILE *fpout );
+int thermalModelCollect( profileT *p, int nyears_eq, int ndays_out,
+                         int nperday, double *T_surf, double *lt_out );
 double getSecondsPerYear( profileT *p );
 void updateTemperatures( profileT *p, double time, double dtime, double dec, double r );
 void gridParams( profileT *p );
@@ -149,7 +179,7 @@ double getTimeStep( profileT *p );
 int makeProfile( profileT *p, int nlayers );
 int freeProfile( profileT *p );
 void radFlux( double time, double dec, double r, profileT *p );
-double albedoModel( double a, double theta );
+double albedoModel( double a, double theta, double alb_a, double alb_b );
 double heatCap( double t );
 void heatCapProf( profileT *p );
 double thermCondConst( double rho );
@@ -169,3 +199,15 @@ void updateOrbit( double dtime, double *nu, double *dec, double *r,
 double iceSubRate( double t, double z );
 double iceSubRateVacuum( double t );
 double vaporPressureIce( double t );
+void thomas_solve( int n, double *lower, double *diag, double *upper,
+                   double *rhs, double *solution );
+void updateTemperaturesImplicit( profileT *p, double dtime );
+void updateTemperaturesCN( profileT *p, double dtime, double T0_old, double Tn_old );
+
+// Adaptive timestepping
+void saveState( profileT *p, double *T_saved );
+void restoreState( profileT *p, const double *T_saved );
+int advanceAdaptive( profileT *p, double *time, double dt_max,
+                     double tol, double *nu, double *dec, double *r );
+
+#endif /* HEAT1DFUN_H */
