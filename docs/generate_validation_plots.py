@@ -324,8 +324,12 @@ def main():
             highland_models[lat] = _run(lat_deg=lat)
     plot_multilatitude(highland_models, OUTDIR)
 
-    print("\n3/4  Nighttime cooling with Diviner data...")
-    plot_nighttime_cooling(highland_models, OUTDIR)
+    print("\n3/4  Nighttime cooling with Diviner data (explicit solver)...")
+    explicit_models = {}
+    for lat in LATITUDES:
+        print(f"    Running explicit lat={lat}\u00b0...")
+        explicit_models[lat] = _run(lat_deg=lat, solver="explicit")
+    plot_nighttime_cooling(explicit_models, OUTDIR)
 
     print("\n4/4  Mean T vs latitude with Apollo data...")
     mare_models = {}
