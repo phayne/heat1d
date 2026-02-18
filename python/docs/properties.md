@@ -49,6 +49,15 @@ radiative conduction. At $T = 350$ K, the radiative contribution equals
 $\chi \cdot K_c$. The default value for the Moon is $\chi = 2.7$
 (Eq. A5 of Hayne et al., 2017).
 
+The temperature dependence of $K$ has an important physical consequence:
+because conductivity is higher when the near-surface is hot (daytime), more
+heat flows downward during the day than upward at night, producing a net
+downward *thermal pumping* (or *rectification*) flux. This **solid-state
+greenhouse effect** elevates subsurface temperatures above what a linear
+conductivity model would predict. The Fourier-matrix solver captures this
+explicitly through its outer iteration loop (see
+[Numerical Methods](numerical.md)).
+
 ## Heat Capacity
 
 The heat capacity $c_p(T)$ is a polynomial function of temperature, based on

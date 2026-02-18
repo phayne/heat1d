@@ -117,7 +117,11 @@ Both the implicit and Crank-Nicolson solvers support **adaptive time-stepping** 
 
 ### Fourier-Matrix Solver
 
-The **Fourier-matrix solver** eliminates time-stepping entirely by solving the periodic steady-state in the frequency domain. It decomposes the diurnal surface flux into Fourier harmonics and propagates each frequency through the subsurface using 2x2 transmission matrices (analogous to electrical transmission lines). Nonlinear surface radiation is handled via Newton iteration. This approach is ~1000x faster than time-stepping because it does not require equilibration orbits, solving a complete diurnal cycle in ~100 ms.
+The **Fourier-matrix solver** eliminates time-stepping entirely by solving the periodic steady-state in the frequency domain. It decomposes the diurnal surface flux into Fourier harmonics and propagates each frequency through the subsurface using 2×2 transmission matrices (analogous to electrical transmission lines). Nonlinear surface radiation is handled via Newton iteration in the time domain, using a circulant admittance matrix constructed from the frequency-domain impedance.
+
+An outer iteration loop captures the **solid-state greenhouse effect** (thermal pumping): the nonlinear $T^3$ dependence of thermal conductivity produces a net downward heat flux that elevates subsurface temperatures. The solver computes the exact time-averaged rectification flux and adjusts the equilibrium temperature profile accordingly.
+
+This approach is ~1000× faster than time-stepping because it solves the periodic steady state directly, without equilibration orbits. A complete lunar diurnal cycle is solved in ~100 ms. It is also the **default equilibration solver** -- even when using time-stepping methods for output, the Fourier solver initializes the temperature profile to the converged periodic state, eliminating multi-orbit spin-up.
 
 For detailed equations and derivations, see the [Numerical Methods](python/docs/numerical.md) documentation.
 

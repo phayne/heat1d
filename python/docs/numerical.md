@@ -1,8 +1,9 @@
 # Numerical Methods
 
-`heat1d` implements three finite difference schemes for solving the 1-D heat
-equation, following the formulation in Hayne et al. (2017), Appendix A2
-(Eqs. A13--A20).
+`heat1d` implements four numerical methods for the 1-D heat equation: three
+finite-difference time-stepping schemes following Hayne et al. (2017), Appendix
+A2 (Eqs. A13--A20), and a frequency-domain Fourier-matrix solver that eliminates
+time-stepping entirely.
 
 ## Finite Difference Discretization
 
@@ -135,14 +136,145 @@ $$
 The algorithm is numerically stable for the heat equation because the coefficient
 matrix is always diagonally dominant: $|m_i| = 1 + a_i + b_i > |a_i| + |b_i|$.
 
+## Fourier-Matrix Solver (Frequency Domain)
+
+The Fourier-matrix solver takes a fundamentally different approach: instead of
+marching forward in time, it solves for the periodic steady-state temperature
+directly in the frequency domain. This eliminates time-stepping and equilibration
+entirely, providing ~100--1000× speedup over the finite-difference methods.
+
+### Principle
+
+For a periodic surface forcing with period $P$, the temperature at any depth
+can be decomposed into Fourier harmonics:
+
+$$
+T(z, t) = \bar{T}(z) + \sum_{n=1}^{N/2} \hat{T}_n(z) \, e^{i n \omega_0 t} + \text{c.c.}
+$$
+
+where $\omega_0 = 2\pi / P$ is the fundamental angular frequency and
+$\bar{T}(z)$ is the time-mean (DC) temperature profile. Each harmonic
+propagates independently through the subsurface, with amplitude decaying and
+phase shifting according to the thermal properties of each layer.
+
+### Transmission Matrices
+
+For a single frequency $\omega$, the temperature and heat flux at the top and
+bottom of a homogeneous layer of thickness $d$ are related by a 2×2 transmission
+matrix (analogous to electrical transmission lines):
+
+$$
+\begin{pmatrix} \hat{T} \\ \hat{q} \end{pmatrix}_{\text{top}} =
+\begin{pmatrix} \cosh(qd) & \frac{\sinh(qd)}{kq} \\
+kq \sinh(qd) & \cosh(qd) \end{pmatrix}
+\begin{pmatrix} \hat{T} \\ \hat{q} \end{pmatrix}_{\text{bottom}}
+$$
+
+where $q = \sqrt{i\omega / \kappa}$ is the complex thermal wavenumber, $k$ is
+the thermal conductivity, and $\kappa = k / (\rho c_p)$ is the thermal
+diffusivity. The matrix product over all layers gives the global transfer from
+the surface to the bottom boundary, and the **surface thermal impedance** is:
+
+$$
+Z_{\text{surf}}(\omega) = \frac{\hat{T}_{\text{surf}}}{\hat{q}_{\text{surf}}} = \frac{P_{00}}{P_{10}}
+$$
+
+where $P_{00}$ and $P_{10}$ are elements of the cumulative matrix product.
+
+### Nonlinear Surface Radiation
+
+The surface energy balance $\varepsilon \sigma T_s^4 = Q_s + q_{\text{cond}}$
+is nonlinear in $T_s$. The solver handles this via Newton iteration in the
+time domain. The conductive heat flux at the surface is computed from the
+frequency-domain admittance (inverse impedance) as a circulant matrix $\mathbf{C}$:
+
+$$
+\mathbf{q}_{\text{cond}} = \mathbf{C} \, \mathbf{T}_s
+$$
+
+where $\mathbf{C}$ is constructed from the inverse FFT of the admittance
+spectrum $Y(\omega_n) = 1 / Z_{\text{surf}}(\omega_n)$. The Newton update at
+each iteration is:
+
+$$
+\delta \mathbf{T}_s = \left( \mathbf{J} + \mathbf{C} \right)^{-1} \mathbf{R}
+$$
+
+where $\mathbf{J} = \text{diag}(4 \varepsilon \sigma T_s^3)$ is the Jacobian of
+the radiation term and $\mathbf{R}$ is the residual. This converges in 5--15
+iterations.
+
+### Thermal Pumping (Rectification)
+
+The nonlinear temperature dependence of thermal conductivity
+($K \propto 1 + \chi T^3/350^3$) produces a net downward heat transport known
+as *thermal pumping* or the *solid-state greenhouse effect*. Because conductivity
+is higher when the near-surface is hot (daytime), more heat flows downward during
+the day than upward at night. This elevates subsurface temperatures above what
+a linear model would predict.
+
+The solver captures this through an outer iteration loop:
+
+1. **Freeze properties** at the current equilibrium profile $\bar{T}(z)$
+2. **Solve** the linearized frequency-domain problem (inner Newton loop)
+3. **Compute rectification flux** $J_{\text{pump}}(z) = \langle k(T) \, \partial T'/\partial z \rangle$ from the time-domain reconstruction of $T(z,t)$ and the exact nonlinear $k(T)$
+4. **Update the equilibrium profile** by integrating $d\bar{T}/dz = (Q_b - J_{\text{pump}}) / \langle k \rangle$ downward from the surface
+5. **Repeat** until the mean surface temperature converges (typically 3--5 outer iterations)
+
+### Depth Reconstruction
+
+Once the surface temperature is converged, the full $T(z, t)$ field is
+reconstructed using the depth transfer functions:
+
+$$
+\hat{T}_n(z) = \hat{T}_{n,\text{surf}} \cdot \frac{P_{00}(z)}{P_{00,\text{surf}}}
+$$
+
+The DC component uses the equilibrium profile $\bar{T}(z)$ (which includes the
+rectification correction), and the AC components are propagated from the surface
+via the transmission matrices. An inverse FFT recovers $T(z, t)$.
+
+### Performance
+
+The Fourier-matrix solver is ~1000× faster than time-stepping for a single
+diurnal cycle because:
+
+- No equilibration orbits are required (the solution is already periodic)
+- All frequencies are solved simultaneously via matrix operations
+- The Newton iteration converges in $O(10)$ iterations rather than $O(10^3)$ time steps
+- A complete lunar diurnal cycle is solved in ~100 ms
+
+### Limitations
+
+- Assumes periodic forcing (cannot model transient events like eclipses)
+- Linearizes subsurface conduction around the equilibrium profile (corrected by
+  outer iteration, but may be less accurate for extreme temperature swings)
+- Does not support PSR (bowl-shaped crater) geometry
+
 ## Solver Comparison
 
-| Scheme | Accuracy | Stability | Steps/lunar day |
-|---|---|---|---|
-| Explicit | $O(\Delta t)$ | Conditional | ~830 |
-| Crank-Nicolson | $O(\Delta t^2)$ | Unconditional | ~24 |
-| Implicit | $O(\Delta t)$ | Unconditional | ~24 |
+| Scheme | Method | Accuracy | Stability | Steps/lunar day | Relative Speed |
+|---|---|---|---|---|---|
+| Explicit | Forward Euler | $O(\Delta t)$ | Conditional | ~830 | 1× |
+| Implicit | Backward Euler + TDMA | $O(\Delta t)$ | Unconditional | ~24 | ~35× |
+| Crank-Nicolson | Semi-implicit + TDMA | $O(\Delta t^2)$ | Unconditional | ~24 | ~35× |
+| Fourier-matrix | Frequency domain | Spectral | N/A (periodic) | N/A | ~1000× |
 
-For most applications, the Crank-Nicolson scheme is recommended: it offers
-second-order accuracy with the same unconditional stability as the fully implicit
-scheme.
+For time-stepping applications, the Crank-Nicolson scheme is recommended: it
+offers second-order accuracy with the same unconditional stability as the fully
+implicit scheme.
+
+For periodic steady-state problems (the most common use case), the **Fourier-matrix
+solver** is strongly preferred. It is the default equilibration solver
+(`equil_solver = "fourier-matrix"` in `Configurator`), and when used as the
+primary solver (`solver = "fourier-matrix"`), it bypasses equilibration entirely.
+
+### Fourier-Matrix as Equilibration Solver
+
+Even when the output phase uses a time-stepping solver (e.g., for eclipse
+modeling or external flux series), the Fourier-matrix solver is used by default
+for the equilibration phase. It computes the periodic steady-state temperature
+profile directly, then initializes the time-stepping solver from $T(t=0, z)$
+(local noon). This eliminates the need for multi-orbit spin-up and ensures the
+time-stepping solver starts from a well-converged state. See
+[Equilibration](equilibration.md) for details.
