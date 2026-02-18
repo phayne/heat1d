@@ -46,50 +46,71 @@ def _run(lat_deg=0, solver="fourier-matrix", output_interval=None, **kw):
     return model
 
 
-# ---- Plot 1: Diurnal Surface Temperature (hero image) ----
+# ---- Plot 1: Two-panel hero image ----
 
-def plot_diurnal_surface(model, outdir):
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+def plot_hero(model, outdir):
+    """Two-panel hero: depth profiles at selected times + diurnal curves at depth."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-    T_surf = model.T[:, 0]
     lt = model.lt
+    z_cm = model.profile.z * 100  # m -> cm
 
-    ax.plot(lt, T_surf, color="k", lw=1.8)
+    # --- Left panel: T(z) at several local times ---
+    # Pick ~8 evenly-spaced snapshots through the day
+    times_hr = [0, 3, 6, 9, 12, 15, 18, 21]
+    cmap = plt.cm.twilight_shifted
+    norm = plt.Normalize(0, 24)
 
-    # Annotate peak and minimum
-    i_peak = np.argmax(T_surf)
-    i_min = np.argmin(T_surf)
-    ax.annotate(
-        f"{T_surf[i_peak]:.0f} K",
-        xy=(lt[i_peak], T_surf[i_peak]),
-        xytext=(lt[i_peak] + 1.5, T_surf[i_peak] - 15),
-        fontsize=10, ha="left",
-        arrowprops=dict(arrowstyle="-", color="0.4", lw=0.8),
-    )
-    ax.annotate(
-        f"{T_surf[i_min]:.0f} K",
-        xy=(lt[i_min], T_surf[i_min]),
-        xytext=(lt[i_min] + 1.5, T_surf[i_min] + 15),
-        fontsize=10, ha="left",
-        arrowprops=dict(arrowstyle="-", color="0.4", lw=0.8),
-    )
+    # Limit depth to top 40 cm where the action is
+    i_depth = np.searchsorted(z_cm, 40)
 
-    ax.set_xlabel("Local Time [hr]")
-    ax.set_ylabel("Surface Temperature [K]")
-    ax.set_xlim(0, 24)
-    ax.set_xticks([0, 6, 12, 18, 24])
+    for t_hr in times_hr:
+        i_t = np.argmin(np.abs(lt - t_hr))
+        color = cmap(norm(t_hr))
+        label = f"{t_hr:.0f} hr"
+        ax1.plot(model.T[i_t, :i_depth], z_cm[:i_depth],
+                 color=color, lw=1.5, label=label)
 
-    # Secondary labels for day/night context
-    ax2 = ax.twiny()
+    ax1.invert_yaxis()
+    ax1.set_xlabel("Temperature [K]")
+    ax1.set_ylabel("Depth [cm]")
+    ax1.set_title("Thermal Wave Propagation")
+    ax1.legend(title="Local Time", fontsize=8, frameon=False,
+               loc="lower left", ncol=2)
+
+    # --- Right panel: T(t) at several depths ---
+    # Pick depths that show the damping nicely
+    depth_targets_cm = [0, 1, 2, 4, 7, 12, 20, 35]
+    cmap2 = plt.cm.magma_r
+    n_depths = len(depth_targets_cm)
+
+    for j, d_cm in enumerate(depth_targets_cm):
+        i_z = np.argmin(np.abs(z_cm - d_cm))
+        actual_cm = z_cm[i_z]
+        color = cmap2(j / (n_depths - 1) * 0.85)  # avoid lightest end
+        label = f"{actual_cm:.1f} cm" if actual_cm >= 1 else "Surface"
+        ax2.plot(lt, model.T[:, i_z], color=color, lw=1.3, label=label)
+
+    ax2.set_xlabel("Local Time [hr]")
+    ax2.set_ylabel("Temperature [K]")
     ax2.set_xlim(0, 24)
     ax2.set_xticks([0, 6, 12, 18, 24])
-    ax2.set_xticklabels(["Noon", "Sunset", "Midnight", "Sunrise", "Noon"],
-                        fontsize=9, color="0.4")
-    ax2.tick_params(length=0)
+    ax2.set_title("Diurnal Temperature at Depth")
+    ax2.legend(title="Depth", fontsize=8, frameon=False, loc="upper right")
 
-    ax.set_title("Lunar Equatorial Surface Temperature", pad=24)
+    # Secondary labels on right panel
+    ax2t = ax2.twiny()
+    ax2t.set_xlim(0, 24)
+    ax2t.set_xticks([0, 6, 12, 18, 24])
+    ax2t.set_xticklabels(["Noon", "Sunset", "Midnight", "Sunrise", "Noon"],
+                         fontsize=8, color="0.4")
+    ax2t.tick_params(length=0)
+
+    fig.suptitle("Lunar Equatorial Thermal Model", fontsize=14,
+                 fontweight="bold", y=1.02)
     fig.tight_layout()
-    fig.savefig(outdir / "diurnal_surface_temperature.png", dpi=200)
+    fig.savefig(outdir / "diurnal_surface_temperature.png", dpi=200,
+                bbox_inches="tight")
     plt.close(fig)
     print("  -> diurnal_surface_temperature.png")
 
@@ -207,9 +228,9 @@ def main():
 
     print("Generating README plots...")
 
-    print("\n1/4  Diurnal surface temperature (equator)...")
+    print("\n1/4  Hero image (equator)...")
     equator = _run(lat_deg=0)
-    plot_diurnal_surface(equator, OUTDIR)
+    plot_hero(equator, OUTDIR)
 
     print("\n2/4  Depth heatmap (equator)...")
     plot_depth_heatmap(equator, OUTDIR)
