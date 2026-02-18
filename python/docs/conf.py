@@ -18,13 +18,19 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
     "sphinx.ext.mathjax",
+    "myst_parser",
 ]
 
 templates_path = ["_templates"]
 
 source_suffix = {
     ".rst": "restructuredtext",
+    ".md": "markdown",
 }
+
+myst_enable_extensions = [
+    "dollarmath",
+]
 
 master_doc = "index"
 

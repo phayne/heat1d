@@ -119,7 +119,7 @@ Both the implicit and Crank-Nicolson solvers support **adaptive time-stepping** 
 
 The **Fourier-matrix solver** eliminates time-stepping entirely by solving the periodic steady-state in the frequency domain. It decomposes the diurnal surface flux into Fourier harmonics and propagates each frequency through the subsurface using 2x2 transmission matrices (analogous to electrical transmission lines). Nonlinear surface radiation is handled via Newton iteration. This approach is ~1000x faster than time-stepping because it does not require equilibration orbits, solving a complete diurnal cycle in ~100 ms.
 
-For detailed equations and derivations, see the [Numerical Methods](python/docs/numerical.rst) documentation.
+For detailed equations and derivations, see the [Numerical Methods](python/docs/numerical.md) documentation.
 
 ## Graphical User Interface
 
@@ -151,7 +151,7 @@ with the following depth- and temperature-dependent material properties from Hay
 - **Surface boundary**: radiative equilibrium with angle-dependent albedo $A(\theta) = A_0 + a(\theta/45°)^3 + b(\theta/90°)^8$
 - **Bottom boundary**: constant geothermal heat flux (0.018 W/m² for the Moon)
 
-For full derivations, see the [Theory](python/docs/theory.rst) documentation and [Hayne et al. (2017)](https://doi.org/10.1002/2017JE005387).
+For full derivations, see the [Theory](python/docs/theory.md) documentation and [Hayne et al. (2017)](https://doi.org/10.1002/2017JE005387).
 
 ## Documentation
 
@@ -159,15 +159,15 @@ Detailed documentation is organized by topic:
 
 | Topic | Description |
 |---|---|
-| [Theory](python/docs/theory.rst) | Heat equation physics and flux formulation |
-| [Thermophysical Properties](python/docs/properties.rst) | Density, conductivity, and heat capacity models |
-| [Boundary Conditions](python/docs/boundary.rst) | Surface energy balance and bottom heat flux |
-| [Numerical Methods](python/docs/numerical.rst) | Solver equations, stability, and comparison |
-| [Spatial Grid](python/docs/grid.rst) | Non-uniform grid construction and skin depth |
-| [Initialization](python/docs/initialization.rst) | Temperature profile initialization |
-| [Equilibration](python/docs/equilibration.rst) | Convergence to periodic steady state |
-| [Validation](python/docs/validation.rst) | Comparison with Apollo and Diviner data |
-| [CLI Reference](python/docs/cli.rst) | Command-line options and examples |
+| [Theory](python/docs/theory.md) | Heat equation physics and flux formulation |
+| [Thermophysical Properties](python/docs/properties.md) | Density, conductivity, and heat capacity models |
+| [Boundary Conditions](python/docs/boundary.md) | Surface energy balance and bottom heat flux |
+| [Numerical Methods](python/docs/numerical.md) | Solver equations, stability, and comparison |
+| [Spatial Grid](python/docs/grid.md) | Non-uniform grid construction and skin depth |
+| [Initialization](python/docs/initialization.md) | Temperature profile initialization |
+| [Equilibration](python/docs/equilibration.md) | Convergence to periodic steady state |
+| [Validation](python/docs/validation.md) | Comparison with Apollo and Diviner data |
+| [CLI Reference](python/docs/cli.md) | Command-line options and examples |
 | [API Reference](python/docs/api.rst) | Python class and function documentation |
 
 Rendered documentation: [heat1d.readthedocs.io](https://heat1d.readthedocs.io)
@@ -180,7 +180,7 @@ The model is validated against lunar temperature measurements from the Apollo 15
 heat1d --validate
 ```
 
-See the [Validation](python/docs/validation.rst) documentation for details.
+See the [Validation](python/docs/validation.md) documentation for details.
 
 ## Citation
 
