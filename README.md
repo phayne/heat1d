@@ -109,7 +109,7 @@ Peak daytime temperatures decrease with latitude due to lower solar incidence an
 
 ### Time-Stepping Solvers
 
-The **explicit scheme** (Hayne et al. 2017, Eq. A17) is a straightforward forward Euler discretization. It updates each grid node from its neighbors at the current time step, requiring no linear algebra. However, the CFL stability condition limits the time step to ~3000 seconds for typical lunar parameters, resulting in ~830 steps per synodic day.
+The **explicit scheme** (Hayne et al. 2017, Eq. A17) is a straightforward forward Euler discretization. It updates each grid node from its neighbors at the current time step, requiring no linear algebra. However, the Courant-Friedrichs-Lewy (CFL) stability condition ($\Delta t \le \frac{\Delta z^2}{2\kappa}$) limits the time step to ~3000 seconds for typical lunar parameters, resulting in ~830 steps per synodic day.
 
 The **implicit** and **Crank-Nicolson** schemes evaluate spatial derivatives at the new time level (fully or partially), producing a tridiagonal linear system at each step. This system is solved in O(N) time using the Thomas algorithm (TDMA). Because they are unconditionally stable, both schemes can take time steps ~35x larger than the explicit scheme. The Crank-Nicolson scheme averages explicit and implicit contributions, achieving second-order accuracy in time at the same computational cost as the first-order implicit scheme.
 
@@ -117,13 +117,13 @@ Both the implicit and Crank-Nicolson solvers support **adaptive time-stepping** 
 
 ### Fourier-Matrix Solver
 
-The **Fourier-matrix solver** eliminates time-stepping entirely by solving the periodic steady-state in the frequency domain. It decomposes the diurnal surface flux into Fourier harmonics and propagates each frequency through the subsurface using 2×2 transmission matrices (analogous to electrical transmission lines). Nonlinear surface radiation is handled via Newton iteration in the time domain, using a circulant admittance matrix constructed from the frequency-domain impedance.
+The **Fourier-matrix solver** eliminates time-stepping entirely by solving the periodic steady-state in the frequency domain. It decomposes the diurnal surface flux into Fourier harmonics and propagates each frequency through the subsurface using 2×2 transmission matrices. Nonlinear surface radiation is handled via Newton iteration in the time domain, using a circulant admittance matrix constructed from the frequency-domain impedance.
 
 An outer iteration loop captures the **solid-state greenhouse effect** (thermal pumping): the nonlinear $T^3$ dependence of thermal conductivity produces a net downward heat flux that elevates subsurface temperatures. The solver computes the exact time-averaged rectification flux and adjusts the equilibrium temperature profile accordingly.
 
 This approach is ~1000× faster than time-stepping because it solves the periodic steady state directly, without equilibration orbits. A complete lunar diurnal cycle is solved in ~100 ms. It is also the **default equilibration solver** -- even when using time-stepping methods for output, the Fourier solver initializes the temperature profile to the converged periodic state, eliminating multi-orbit spin-up.
 
-For detailed equations and derivations, see the [Numerical Methods](python/docs/numerical.md) documentation.
+The Fourier-matrix approach builds on the harmonic decomposition of periodic lunar thermal models introduced by [Linsky (1966)](https://doi.org/10.1016/0019-1035(66)90075-3), the thermal quadrupole (transfer matrix) formalism of [Pipes (1957)](https://doi.org/10.1016/0016-0032(57)90927-6) and [Maillet et al. (2000)](https://doi.org/10.1002/9780470694374), and the harmonic balance technique for nonlinear periodic circuits ([Kundert & Sangiovanni-Vincentelli, 1986](https://doi.org/10.1109/TCAD.1986.1270223)). The solid-state greenhouse (thermal pumping) correction follows the analysis of [Linsky (1966)](https://doi.org/10.1016/0019-1035(66)90075-3), Section V. For detailed equations and derivations, see the [Numerical Methods](python/docs/numerical.md) documentation.
 
 ## Graphical User Interface
 
