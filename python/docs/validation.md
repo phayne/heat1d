@@ -89,7 +89,7 @@ the same cold sky.
 ### Nighttime Cooling Curves
 
 Surface temperature during the lunar night at multiple latitudes, overlaid
-with Diviner Lunar Radiometer regolith temperature observations. The model
+with Diviner Lunar Radiometer regolith temperature observations; note that these represent the rock-free regolith temperature (Bandfield et al., 2011). The model
 reproduces the observed nighttime cooling behavior across all available
 latitudes (similar to Figure A2 of Hayne et al., 2017).
 
@@ -135,3 +135,6 @@ python docs/generate_validation_plots.py
 This produces four PNG files in `docs/images/` using the Fourier-matrix solver
 (fastest). The full validation suite (`heat1d --validate`) generates additional
 comparison plots across all four solvers.
+
+### References
+Bandfield, J. L., Ghent, R. R., Vasavada, A. R., Paige, D. A., Lawrence, S. J., & Robinson, M. S. (2011). Lunar surface rock abundance and regolith fines temperatures derived from LRO Diviner Radiometer data. Journal of Geophysical Research: Planets, 116(E12). [https://doi.org/10.1029/2011JE003866](https://doi.org/10.1029/2011JE003866)
