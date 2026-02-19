@@ -144,8 +144,10 @@ Install with `pip install "heat1d[gui]"` and launch with `heat1d-gui`.
 ## C Implementation
 
 The `c/` directory contains a standalone C implementation optimized for batch
-runs and high performance. It supports all four solvers and reads
-the **same YAML configuration files** as the Python version.
+runs and high performance. It supports all four solvers, reads the **same YAML
+configuration files** as the Python version, and can model **any airless
+planetary body** (Moon, Mercury, asteroids, icy satellites, etc.) by
+configuring the physical and orbital parameters.
 
 ### Building
 
@@ -162,27 +164,27 @@ make test                    # 24 validation checks
 
 ```bash
 # Moon equator, TI=55, H=0.06, highland albedo
-./heat1d_moon 0 55 0.06 0.12 > temperature.txt
+./heat1d 0 55 0.06 0.12 > temperature.txt
 
 # Apollo 15 site (26 N, mare albedo, Fourier solver)
-./heat1d_moon 26 55 0.06 0.06 3 > apollo15.txt
+./heat1d 26 55 0.06 0.06 3 > apollo15.txt
 
 # Implicit solver with adaptive timestepping
-./heat1d_moon 0 55 0.06 0.12 2 480 480 1.0 > implicit_adaptive.txt
+./heat1d 0 55 0.06 0.12 2 480 480 1.0 > implicit_adaptive.txt
 ```
 
 **YAML configuration** (shares config files with Python):
 
 ```bash
 # Use the Python example config
-./heat1d_moon --config ../python/heat1d/examples/moon_default.yaml --ti 55
+./heat1d --config ../python/heat1d/examples/moon_default.yaml --ti 55
 
 # Override latitude and albedo for an Apollo site
-./heat1d_moon --config ../python/heat1d/examples/moon_default.yaml \
+./heat1d --config ../python/heat1d/examples/moon_default.yaml \
     --lat 26 --ti 55 --albedo 0.06
 
 # Inspect the full configuration
-./heat1d_moon --config moon.yaml --verbose 2>config_dump.txt
+./heat1d --config moon.yaml --verbose 2>config_dump.txt
 ```
 
 Output is temperature data to stdout (one row per time step, one column per

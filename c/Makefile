@@ -14,9 +14,9 @@ endif
 
 OBJS = heat1dfun.o orbitfun.o fourier_solver.o yaml_config.o
 
-all: heat1d_moon
+all: heat1d
 
-heat1d_moon: heat1d_moon.o $(OBJS)
+heat1d: heat1d.o $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 test_validate: test_validate.o heat1dfun.o orbitfun.o fourier_solver.o
@@ -29,6 +29,6 @@ test: test_validate
 	./test_validate
 
 clean:
-	rm -f *.o heat1d_moon test_validate
+	rm -f *.o heat1d test_validate
 
 .PHONY: all test clean

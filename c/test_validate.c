@@ -13,7 +13,7 @@
 #include "heat1dfun.h"
 #include "fourier_solver.h"
 
-/* Grid parameters (same as heat1d_moon.c) */
+/* Grid parameters (same as heat1d.c) */
 #define NSKIN     10.0
 #define NSKINBOT  20.0
 #define NSKINBOT_APOLLO 35.0
@@ -73,7 +73,7 @@ static void init_profile_defaults( profileT *p ) {
 }
 
 /*
- * tiProfile() - same grid generation as heat1d_moon.c
+ * tiProfile() - same grid generation as heat1d.c
  */
 static int tiProfile( profileT *p, double h, double latitude, double ti,
                       double nskinbot, double nskin, int nn ) {

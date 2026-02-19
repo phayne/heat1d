@@ -1,6 +1,6 @@
 """Python wrapper for the C thermal model backend.
 
-Provides a CModel class that runs the C ``heat1d_moon`` executable and
+Provides a CModel class that runs the C ``heat1d`` executable and
 parses its output into numpy arrays, giving an interface compatible with
 the Python Model class for use with validation and plotting code.
 """
@@ -34,7 +34,7 @@ def build_c(c_dir=None, force=False):
     Returns
     -------
     Path
-        Path to the ``heat1d_moon`` executable.
+        Path to the ``heat1d`` executable.
 
     Raises
     ------
@@ -42,7 +42,7 @@ def build_c(c_dir=None, force=False):
         If compilation fails.
     """
     c_dir = Path(c_dir) if c_dir is not None else C_DIR
-    exe = c_dir / "heat1d_moon"
+    exe = c_dir / "heat1d"
 
     if exe.exists() and not force:
         return exe
@@ -120,7 +120,7 @@ def run_c_validation(c_dir=None, quiet=False):
 
 
 class CModel:
-    """Wrapper around the C ``heat1d_moon`` executable.
+    """Wrapper around the C ``heat1d`` executable.
 
     Provides the same ``T``, ``lt``, and ``profile.z`` attributes as
     the Python :class:`~heat1d.model.Model` so that validation and

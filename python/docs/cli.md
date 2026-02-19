@@ -113,7 +113,7 @@ for performance-critical batch runs:
 
 ```bash
 cd c/
-./heat1d_moon --config ../python/heat1d/examples/moon_default.yaml --ti 55
+./heat1d --config ../python/heat1d/examples/moon_default.yaml --ti 55
 ```
 
 See [c/README.md](../../c/README.md) for full documentation of the C command-line

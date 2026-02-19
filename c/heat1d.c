@@ -1,5 +1,5 @@
 /*
- * FILE: heat1d_moon.c
+ * FILE: heat1d.c
  * PURPOSE: Main program for running thermal code, with variable thermal inertia
  * DEPENDENCIES: heat1dfun.c, heat1dfun.h, orbitfun.c, yaml_config.c
  * AUTHOR: Paul O. Hayne
@@ -41,8 +41,8 @@ double *readFluxFile( const char *path, double *dt_out, int *nsteps_out );
 static void print_usage(void) {
   printf("\n");
   printf("Usage:\n");
-  printf("  heat1d_moon --config <file.yaml> [options]\n");
-  printf("  heat1d_moon <lat> <T.I.> <H> <albedo> [solver] [equil_nperday] [nperday_output] [adaptive_tol] [flux_file]\n");
+  printf("  heat1d --config <file.yaml> [options]\n");
+  printf("  heat1d <lat> <T.I.> <H> <albedo> [solver] [equil_nperday] [nperday_output] [adaptive_tol] [flux_file]\n");
   printf("\n");
   printf("YAML mode:\n");
   printf("  --config <file>   Read parameters from YAML configuration file\n");

@@ -5,6 +5,11 @@ This is the most computationally efficient version, solving the heat equation
 with depth- and temperature-dependent thermophysical properties following
 [Hayne et al. (2017)](https://doi.org/10.1002/2017JE005387).
 
+Although the default parameters are calibrated for the Moon, all physical and
+orbital properties are configurable via YAML or CLI arguments, making the code
+suitable for **any airless planetary body** (Mercury, asteroids, icy satellites,
+etc.).
+
 ## Prerequisites
 
 External dependencies:
@@ -39,7 +44,7 @@ From the `c/` directory:
 make
 ```
 
-This produces the `heat1d_moon` executable. The Makefile auto-detects macOS vs.
+This produces the `heat1d` executable. The Makefile auto-detects macOS vs.
 Linux for library paths and framework linkage.
 
 To build and run the validation test suite:
@@ -50,10 +55,10 @@ make test
 
 ## Quick Start
 
-Run the Moon at the equator with standard parameters:
+Run the Moon at the equator with default parameters:
 
 ```bash
-./heat1d_moon 0 55 0.06 0.12 > temperature.txt
+./heat1d 0 55 0.06 0.12 > temperature.txt
 ```
 
 This simulates one diurnal cycle at the lunar equator with:
@@ -72,13 +77,13 @@ current directory:
 
 ```bash
 # Apollo 15 site (26°N, mare albedo, Fourier solver)
-./heat1d_moon 26 55 0.06 0.06 3 > apollo15.txt
+./heat1d 26 55 0.06 0.06 3 > apollo15.txt
 
 # High latitude with Crank-Nicolson solver
-./heat1d_moon 60 55 0.06 0.12 1 > lat60.txt
+./heat1d 60 55 0.06 0.12 1 > lat60.txt
 
 # Low thermal inertia (fluffy regolith)
-./heat1d_moon 0 30 0.06 0.12 > fluffy.txt
+./heat1d 0 30 0.06 0.12 > fluffy.txt
 ```
 
 ## YAML Configuration
@@ -88,7 +93,7 @@ implementation. This allows all physical and numerical parameters to be set
 without recompiling.
 
 ```bash
-./heat1d_moon --config ../python/heat1d/examples/moon_default.yaml --ti 55
+./heat1d --config ../python/heat1d/examples/moon_default.yaml --ti 55
 ```
 
 The `--config` flag loads the YAML file, then optional CLI flags override
@@ -147,7 +152,7 @@ physical:
 ## Command-Line Arguments (Legacy Mode)
 
 ```
-./heat1d_moon <lat> <T.I.> <H> <albedo> [solver] [equil_nperday] [nperday_output] [adaptive_tol] [flux_file]
+./heat1d <lat> <T.I.> <H> <albedo> [solver] [equil_nperday] [nperday_output] [adaptive_tol] [flux_file]
 ```
 
 The first four arguments are required; the rest are optional.
@@ -257,7 +262,7 @@ All physical constants are defined in `heat1dfun.h`. Key values for the Moon
 
 | File | Description |
 |---|---|
-| `heat1d_moon.c` | Main program: CLI/YAML parsing, grid setup, simulation driver |
+| `heat1d.c` | Main program: CLI/YAML parsing, grid setup, simulation driver |
 | `heat1dfun.c` | Core solver: time-stepping, boundary conditions, material properties |
 | `heat1dfun.h` | Constants, structures (`layerT`, `profileT`), function prototypes |
 | `orbitfun.c` | Orbital mechanics: solar zenith angle, hour angle, orbit update |
