@@ -10,9 +10,7 @@ The 1-D heat equation governs the evolution of temperature $T$ as a function
 of depth $z$ and time $t$:
 
 $$
-\rho \, c_p \frac{\partial T}{\partial t} = \frac{\partial}{\partial z}
-\left( K \frac{\partial T}{\partial z} \right)
-\tag{A1}
+\rho \, c_p \frac{\partial T}{\partial t} = \frac{\partial}{\partial z} \left( K \frac{\partial T}{\partial z} \right) \tag{A1}
 $$
 
 where $\rho(z)$ is the bulk density, $c_p(T)$ is the specific heat capacity,
@@ -39,8 +37,7 @@ Bulk density increases exponentially from a surface value $\rho_s$ to a
 deep value $\rho_d$ (Eq. A2):
 
 $$
-\rho(z) = \rho_d - (\rho_d - \rho_s) \, e^{-z/H}
-\tag{A2}
+\rho(z) = \rho_d - (\rho_d - \rho_s) \, e^{-z/H} \tag{A2}
 $$
 
 where $H$ is the *H-parameter*, the e-folding scale depth. For the Moon,
@@ -52,15 +49,13 @@ The total thermal conductivity combines a phonon (contact) term $K_c$ and a
 radiative $T^3$ term (Eqs. A3--A5):
 
 $$
-K = K_c \left[ 1 + \chi \left(\frac{T}{350}\right)^3 \right]
-\tag{A4}
+K = K_c \left[ 1 + \chi \left(\frac{T}{350}\right)^3 \right] \tag{A4}
 $$
 
 The contact conductivity follows the same depth profile as density:
 
 $$
-K_c(z) = K_d - (K_d - K_s) \frac{\rho_d - \rho(z)}{\rho_d - \rho_s}
-\tag{A5}
+K_c(z) = K_d - (K_d - K_s) \frac{\rho_d - \rho(z)}{\rho_d - \rho_s} \tag{A5}
 $$
 
 For the Moon, $K_s = 7.4 \times 10^{-4}$ W m⁻¹ K⁻¹,
@@ -77,8 +72,7 @@ temperatures above what a linear model would predict.
 The specific heat capacity is a polynomial in temperature (Eq. A6):
 
 $$
-c_p(T) = c_0 + c_1 T + c_2 T^2 + c_3 T^3 + c_4 T^4
-\tag{A6}
+c_p(T) = c_0 + c_1 T + c_2 T^2 + c_3 T^3 + c_4 T^4 \tag{A6}
 $$
 
 based on data from Hemingway et al. (1981) and Ledlow et al. (1992). Valid for
@@ -100,9 +94,7 @@ absorbed solar radiation, thermal emission, and conduction into the subsurface
 (Eq. A7):
 
 $$
-\varepsilon \, \sigma \, T_s^4 = Q_s + K \left. \frac{\partial T}{\partial z}
-\right|_{z=0}
-\tag{A7}
+\varepsilon \, \sigma \, T_s^4 = Q_s + K \left. \frac{\partial T}{\partial z} \right|_{z=0} \tag{A7}
 $$
 
 where $\varepsilon$ is the infrared emissivity ($0.95$ for the Moon), $\sigma$
@@ -120,8 +112,7 @@ nighttime cooling curve.
 The absorbed flux on a horizontal surface at latitude $\phi$ is (Eq. A9):
 
 $$
-Q_s(t) = \frac{S_0}{r^2} \left(1 - A(\theta)\right) \cos\theta
-\tag{A9}
+Q_s(t) = \frac{S_0}{r^2} \left(1 - A(\theta)\right) \cos\theta \tag{A9}
 $$
 
 where $S_0 = 1361$ W m⁻² is the solar constant at 1 AU, $r$ is the
@@ -132,16 +123,14 @@ The solar incidence angle $\theta$ for a horizontal surface depends on
 latitude $\phi$, solar declination $\delta$, and hour angle $h = 2\pi t / P$:
 
 $$
-\cos\theta = \sin\phi \sin\delta + \cos\phi \cos\delta \cos h
-\tag{A11}
+\cos\theta = \sin\phi \sin\delta + \cos\phi \cos\delta \cos h \tag{A11}
 $$
 
 The hour angle $h$ is measured from local noon, and the flux is clipped to zero
 when $\cos\theta < 0$ (the Sun is below the horizon):
 
 $$
-\psi(x) = \frac{1}{2}\left(\cos x + \lvert\cos x\rvert\right)
-\tag{A10}
+\psi(x) = \frac{1}{2}\left(\cos x + \lvert\cos x\rvert\right) \tag{A10}
 $$
 
 For a body with orbital eccentricity $e$ and obliquity $\epsilon$, the solar
@@ -155,9 +144,7 @@ The Bond albedo increases with incidence angle following Keihm (1984) and
 Vasavada et al. (2012):
 
 $$
-A(\theta) = A_0 + a \left(\frac{\theta}{\pi/4}\right)^3
-+ b \left(\frac{\theta}{\pi/2}\right)^8
-\tag{A8}
+A(\theta) = A_0 + a \left(\frac{\theta}{\pi/4}\right)^3 + b \left(\frac{\theta}{\pi/2}\right)^8 \tag{A8}
 $$
 
 where $A_0$ is the normal-incidence albedo (0.12 for highland, 0.06 for mare),
@@ -176,19 +163,14 @@ $T^3$-dependent conductivity), it is solved iteratively using Newton's method
 The function whose root is sought is:
 
 $$
-f(T_s) = \varepsilon \, \sigma \, T_s^4 - Q_s -
-K_0 \frac{-3T_0 + 4T_1 - T_2}{2 \Delta z_0}
-\tag{A25}
+f(T_s) = \varepsilon \, \sigma \, T_s^4 - Q_s - K_0 \frac{-3T_0 + 4T_1 - T_2}{2 \Delta z_0} \tag{A25}
 $$
 
 where the surface temperature gradient uses a second-order forward difference
 (Eq. A24). Its derivative with respect to $T_s$ is:
 
 $$
-f'(T_s) = 4 \varepsilon \sigma T_s^3
-- 3 B_0 T_s^2 \frac{4T_1 - 3T_0 - T_2}{2 \Delta z_0}
-+ \frac{3}{2 \Delta z_0} \left(K_{c,0} + B_0 T_s^3\right)
-\tag{A29}
+f'(T_s) = 4 \varepsilon \sigma T_s^3 - 3 B_0 T_s^2 \frac{4T_1 - 3T_0 - T_2}{2 \Delta z_0} + \frac{3}{2 \Delta z_0} \left(K_{c,0} + B_0 T_s^3\right) \tag{A29}
 $$
 
 where $B_0$ is the radiative conductivity prefactor at the surface. The
@@ -200,15 +182,13 @@ $|\Delta T| < \epsilon$ (default: 0.1 K), typically in 2--5 iterations.
 The lower boundary applies a constant geothermal heat flux $Q_b$ (Eq. A12):
 
 $$
-\left. \frac{\partial T}{\partial z} \right|_{z=z_*} = \frac{Q_b}{K}
-\tag{A12}
+\left. \frac{\partial T}{\partial z} \right|_{z=z_*} = \frac{Q_b}{K} \tag{A12}
 $$
 
 In the finite-difference discretization, this becomes (Eq. A30):
 
 $$
-T_N = T_{N-1} + \frac{Q_b}{K_{N-1}} \Delta z_{N-1}
-\tag{A30}
+T_N = T_{N-1} + \frac{Q_b}{K_{N-1}} \Delta z_{N-1} \tag{A30}
 $$
 
 For the Moon, $Q_b = 0.018$ W m⁻² (Langseth et al., 1976), corresponding
@@ -228,34 +208,26 @@ For numerical solution, the heat equation is written in flux-conservative form.
 The heat flux across layer boundaries is (Eq. A15):
 
 $$
-q_{i+1/2} \approx K_i \frac{T_{i+1} - T_i}{\Delta z_i}
-\tag{A15}
+q_{i+1/2} \approx K_i \frac{T_{i+1} - T_i}{\Delta z_i} \tag{A15}
 $$
 
 The flux gradient at node $i$ uses the fluxes on either side (Eq. A16):
 
 $$
-\left.\frac{\partial q}{\partial z}\right|_i \approx
-\frac{2}{\Delta z_i + \Delta z_{i-1}} \left[
-K_i \frac{T_{i+1} - T_i}{\Delta z_i}
-- K_{i-1} \frac{T_i - T_{i-1}}{\Delta z_{i-1}} \right]
-\tag{A16}
+\left.\frac{\partial q}{\partial z}\right|_i \approx \frac{2}{\Delta z_i + \Delta z_{i-1}} \left[ K_i \frac{T_{i+1} - T_i}{\Delta z_i} - K_{i-1} \frac{T_i - T_{i-1}}{\Delta z_{i-1}} \right] \tag{A16}
 $$
 
 This form ensures energy conservation on the non-uniform grid. The geometric
 coefficients $p_i$ and $q_i$ (Eq. A18) absorb the grid-spacing factors:
 
 $$
-p_i = \frac{2 \Delta z_i}{\Delta z_{i-1} \Delta z_i (\Delta z_{i-1} + \Delta z_i)}, \quad
-q_i = \frac{2 \Delta z_{i-1}}{\Delta z_{i-1} \Delta z_i (\Delta z_{i-1} + \Delta z_i)}
+p_i = \frac{2 \Delta z_i}{\Delta z_{i-1} \Delta z_i (\Delta z_{i-1} + \Delta z_i)}, \quad q_i = \frac{2 \Delta z_{i-1}}{\Delta z_{i-1} \Delta z_i (\Delta z_{i-1} + \Delta z_i)}
 $$
 
 so the temperature update simplifies to:
 
 $$
-T_i^{n+1} = T_i^n + \frac{\Delta t}{\rho_i c_{p,i}}
-\left[ \alpha_i T_{i-1}^n - (\alpha_i + \beta_i) T_i^n + \beta_i T_{i+1}^n \right]
-\tag{A17}
+T_i^{n+1} = T_i^n + \frac{\Delta t}{\rho_i c_{p,i}} \left[ \alpha_i T_{i-1}^n - (\alpha_i + \beta_i) T_i^n + \beta_i T_{i+1}^n \right] \tag{A17}
 $$
 
 where $\alpha_i = p_i K_{i-1}$ and $\beta_i = q_i K_i$.
@@ -271,22 +243,19 @@ analytic estimates (Eqs. A34--A36).
 **Surface**: radiative equilibrium at local noon:
 
 $$
-T_0 = \left(\frac{(1 - A) \, F_\odot}{\varepsilon \, \sigma}\right)^{1/4}
-\tag{A34}
+T_0 = \left(\frac{(1 - A) \, F_\odot}{\varepsilon \, \sigma}\right)^{1/4} \tag{A34}
 $$
 
 **Bottom**: isothermal body equilibrium:
 
 $$
-T_N = \frac{T_0}{\sqrt{2}}
-\tag{A35}
+T_N = \frac{T_0}{\sqrt{2}} \tag{A35}
 $$
 
 **Subsurface**: exponential interpolation:
 
 $$
-T_i = T_N - (T_N - T_0) \, e^{-z_i/H}
-\tag{A36}
+T_i = T_N - (T_N - T_0) \, e^{-z_i/H} \tag{A36}
 $$
 
 This gives a plausible starting profile. The model then equilibrates to the
