@@ -21,9 +21,9 @@
 - **JPL Horizons/SPICE integration** for precise ephemeris-driven illumination
 - **Eclipse modeling** for satellite bodies (e.g., Moon in Earth's shadow)
 - **PSR crater modeling**: bowl-shaped permanently shadowed regions ([Ingersoll & Svitek, 1992](docs/Ingersoll-Svitek_bowl-shaped-craters-frost_Icarus_1992.pdf))
-- **YAML configuration** system with command-line overrides
+- **YAML configuration** system shared between Python and C implementations
 - **Validation suite** against Apollo heat flow data and Diviner radiometer observations
-- **C backend** for performance-critical applications
+- **C implementation** for performance-critical applications (same YAML config, all solvers, 24 validation tests)
 
 ## Quick Start
 
@@ -141,6 +141,54 @@ The GUI provides interactive control over all model parameters with real-time vi
 
 Install with `pip install "heat1d[gui]"` and launch with `heat1d-gui`.
 
+## C Implementation
+
+The `c/` directory contains a standalone C implementation optimized for batch
+runs and performance-critical workflows. It supports all four solvers and reads
+the **same YAML configuration files** as the Python version.
+
+### Building
+
+```bash
+cd c/
+brew install fftw libyaml   # macOS; see c/README.md for Linux packages
+make
+make test                    # 24 validation checks
+```
+
+### Running
+
+**Legacy positional arguments** (backward compatible):
+
+```bash
+# Moon equator, TI=55, H=0.06, highland albedo
+./heat1d_moon 0 55 0.06 0.12 > temperature.txt
+
+# Apollo 15 site (26 N, mare albedo, Fourier solver)
+./heat1d_moon 26 55 0.06 0.06 3 > apollo15.txt
+
+# Implicit solver with adaptive timestepping
+./heat1d_moon 0 55 0.06 0.12 2 480 480 1.0 > implicit_adaptive.txt
+```
+
+**YAML configuration** (shares config files with Python):
+
+```bash
+# Use the Python example config
+./heat1d_moon --config ../python/heat1d/examples/moon_default.yaml --ti 55
+
+# Override latitude and albedo for an Apollo site
+./heat1d_moon --config ../python/heat1d/examples/moon_default.yaml \
+    --lat 26 --ti 55 --albedo 0.06
+
+# Inspect the full configuration
+./heat1d_moon --config moon.yaml --verbose 2>config_dump.txt
+```
+
+Output is temperature data to stdout (one row per time step, one column per
+depth layer), plus `loctime.txt` and `profile_z_dz_rho_k.txt` in the working
+directory. See [c/README.md](c/README.md) for complete documentation.
+
 ## Theory
 
 `heat1d` solves the 1-D heat equation in porous planetary regolith:
@@ -173,6 +221,8 @@ Detailed documentation is organized by topic:
 | [Validation](python/docs/validation.md) | Comparison with Apollo and Diviner data |
 | [CLI Reference](python/docs/cli.md) | Command-line options and examples |
 | [API Reference](python/docs/api.rst) | Python class and function documentation |
+| [C Implementation](c/README.md) | Building, running, and configuring the C code |
+| [MATLAB Implementation](matlab/README.md) | MEX-file version for MATLAB |
 
 Rendered documentation: [heat1d.readthedocs.io](https://heat1d.readthedocs.io)
 

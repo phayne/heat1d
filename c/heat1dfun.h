@@ -159,6 +159,21 @@ typedef struct {
   const double *flux_input;  // absorbed flux values [W/m^2], length flux_input_len
   int flux_input_len;        // number of flux samples
   double flux_input_dt;      // uniform time spacing of flux samples [s]
+  // Runtime-configurable parameters (replacing compile-time #defines)
+  double solar_const;  // Solar constant [W/m^2]           (default: S0 #define)
+  double chi;          // Radiative conductivity parameter  (default: CHI)
+  double R350_val;     // chi / 350^3                       (default: CHI * R350)
+  double ks;           // Surface conductivity [W/m/K]      (default: KS)
+  double kd;           // Deep conductivity [W/m/K]         (default: KD)
+  double rhos_val;     // Surface density [kg/m^3]          (default: RHOS)
+  double rhod_val;     // Deep density [kg/m^3]             (default: RHOD)
+  double heatflow;     // Geothermal heat flux [W/m^2]      (default: HEATFLOW)
+  double fom;          // Fourier mesh number               (default: FOM)
+  double dtsurf;       // Surface temp convergence [K]      (default: DTSURF)
+  double ecc;          // Orbital eccentricity              (default: ECC)
+  double omega_peri;   // Longitude of perihelion [rad]     (default: OMEGA)
+  int    nyearseq;     // Equilibration years               (default: NYEARSEQ)
+  int    ndays_out;    // Output days                       (default: NDAYSOUT)
   layerT *layer;
 } profileT;
 
@@ -194,8 +209,8 @@ int countLines( FILE *fpin );
 int twoLayerProf( profileT *p, double ztop, double zbot,
                   double rhotop, double rhobot, double tinit,
                   int nlayers );
-void updateOrbit( double dtime, double *nu, double *dec, double *r, 
-		  double rau, double obliq );
+void updateOrbit( double dtime, double *nu, double *dec, double *r,
+		  double rau, double obliq, double ecc, double omega );
 double iceSubRate( double t, double z );
 double iceSubRateVacuum( double t );
 double vaporPressureIce( double t );

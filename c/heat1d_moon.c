@@ -1,7 +1,7 @@
 /*
  * FILE: heat1d_moon.c
  * PURPOSE: Main program for running thermal code, with variable thermal inertia
- * DEPENDENCIES: heat1dfun.c, heat1dfun.h, orbitfun.c
+ * DEPENDENCIES: heat1dfun.c, heat1dfun.h, orbitfun.c, yaml_config.c
  * AUTHOR: Paul O. Hayne
  * NOTES: This version has been modified for arbitrary orbital and rotation
  *        periods, latitude, and thermal inertia. The actual thermal inertia
@@ -9,15 +9,15 @@
  *        to output the density, conductivity (constant term), and heat
  *        capacity, in order to check the thermal inertia in each layer.
  *          -- This version scales the thermal inertia profile based on the
- *             value at dept = H, where H is the e-folding depth of density
- *             and conductivity, defined as "HPAR" below.
+ *             value at depth = H, where H is the e-folding depth of density
+ *             and conductivity.
  *
- *        NOTE THERE IS VERY LITTLE ERROR CHECKING HERE... USE AT YOUR
- *        OWN RISK!
+ *        Supports two modes:
+ *          1) --config <file.yaml>  : read parameters from YAML configuration
+ *          2) positional arguments  : legacy CLI mode (backward compatible)
  *
  * CREATED: January 2011
- * LAST MODIFIED: September 2017
- * VERSION: Let's call this v1.0
+ * LAST MODIFIED: February 2026
  */
 
 #include <stdio.h>
@@ -26,45 +26,45 @@
 #include <math.h>
 #include "heat1dfun.h"
 #include "fourier_solver.h"
+#include "yaml_config.h"
 
-/* ***********
- * Constants *
- * ***********/
-
-// The "H-parameter" defines the e-folding depth of the thermal inertia
-// Density and conductivity both follow: f(z) = f_d - (f_d - f_s)*exp(-z/H)
-//#define HPAR      0.06 // [m]
-
-// Parameters controlling the thickness of layers and lower boundary
-#define NSKIN     10.0 // ratio of skin depth to first layer thickness: z_skin / dz[0]
-#define NSKINBOT  20.0 //number of skin depths to bottom layer
-#define NN        5   //scale factor for increasing layer thick. (low = fast inc.; 5 = nominal)
-
-// Temperature initialization
-// This can be adjusted to decrease equilibration time at depth
+/* Temperature initialization scale */
 #define ZTSCALE   0.1
 
 /* *********************
  * Function Prototypes *
  * *********************/
 
-// NOTE: All other functions are defined in the dependencies (e.g. heat1dfun.h)
-
-/*
- * tiProfile()
- * -- generates the spatial grid and thermophysical properties for a 'gradient' profile
- * -- uses variable layer thicknesses below a specified depth to increase efficiency
- */
-int tiProfile( profileT *p, double h, double latitude, double ti );
-
-/*
- * readFluxFile()
- * -- reads an external flux time series from a text file
- * -- format: comment lines starting with '#', then "dt nsteps" line,
- *    then one flux value per line (W/m^2)
- * -- returns allocated flux array (caller must free), or NULL on error
- */
+int tiProfile( profileT *p, double h, double ti, const configT *cfg );
 double *readFluxFile( const char *path, double *dt_out, int *nsteps_out );
+
+static void print_usage(void) {
+  printf("\n");
+  printf("Usage:\n");
+  printf("  heat1d_moon --config <file.yaml> [options]\n");
+  printf("  heat1d_moon <lat> <T.I.> <H> <albedo> [solver] [equil_nperday] [nperday_output] [adaptive_tol] [flux_file]\n");
+  printf("\n");
+  printf("YAML mode:\n");
+  printf("  --config <file>   Read parameters from YAML configuration file\n");
+  printf("  --lat <deg>       Override latitude [degrees]\n");
+  printf("  --ti <value>      Override thermal inertia [SI]\n");
+  printf("  --H <value>       Override H-parameter [m]\n");
+  printf("  --albedo <value>  Override albedo\n");
+  printf("  --flux <file>     External flux file\n");
+  printf("  --verbose         Print configuration to stderr\n");
+  printf("\n");
+  printf("Legacy positional mode:\n");
+  printf("  <lat>             Latitude in degrees\n");
+  printf("  <T.I.>            Thermal inertia at 273 K [SI units] (55 for typical regolith)\n");
+  printf("  <H>               H-parameter = scale height of TI increase (0.06 is typical)\n");
+  printf("  <albedo>          Solar bolometric albedo of surface\n");
+  printf("  [solver]          0=explicit, 1=crank-nicolson, 2=implicit, 3=fourier\n");
+  printf("  [equil_nperday]   Time steps/day for equilibration (default: %d)\n", NPERDAY);
+  printf("  [nperday_output]  Output samples/day (default: %d)\n", NPERDAY);
+  printf("  [adaptive_tol]    Adaptive step-doubling tolerance [K] (0=off)\n");
+  printf("  [flux_file]       Optional external flux file\n");
+  printf("\n");
+}
 
 /* **************
  * Main Program *
@@ -72,69 +72,110 @@ double *readFluxFile( const char *path, double *dt_out, int *nsteps_out );
 
 int main( int argc, char *argv[] ) {
 
-  double hour, latitude, ti, h, endtime, slope;
+  configT cfg;
   profileT *p;
+  double endtime;
+  double *flux_data = NULL;
+  int verbose = 0;
 
-  // Check for correct arguments
-  if ( argc < 5 || argc > 10 ) {
-    printf("\n");
-    printf("Usage:\n");
-    printf("  heat1d_moon [lat] [T.I.] [H] [albedo] [solver] [equil_nperday] [nperday_output] [adaptive_tol] [flux_file]\n\n");
-    printf("    [lat] -- latitude in degrees\n");
-    printf("    [T.I.] -- thermal inertia at 273 K [SI units] (50 for typical regolith)\n");
-    printf("    [H] -- H-parameter = scale height of TI increase (0.06 is typical)\n");
-    printf("    [albedo] -- solar bolometric albedo of surface\n");
-    printf("    [solver] -- 0=explicit, 1=crank-nicolson, 2=implicit, 3=fourier\n");
-    printf("    [equil_nperday] -- time steps/day for equilibration (default: %d)\n", NPERDAY);
-    printf("    [nperday_output] -- output samples/day (default: %d)\n", NPERDAY);
-    printf("    [adaptive_tol] -- adaptive step-doubling tolerance [K] (0=off, default: 0)\n");
-    printf("    [flux_file] -- optional external flux file (overrides radFlux for output phase)\n");
-    printf("\n");
-    return ( 1 );
+  if ( argc < 2 ) {
+    print_usage();
+    return 1;
   }
 
-  // Convert to floats
-  latitude = atof(argv[1])*PI180;
-  ti = atof(argv[2]);
-  h = atof(argv[3]);
+  /* Initialize configuration with compile-time defaults */
+  config_set_defaults(&cfg);
 
-  // Start at hour angle of zero
-  hour = 0.0;
+  /* ---------------------------------------------------
+   * Detect mode: --config (YAML) vs positional (legacy)
+   * --------------------------------------------------- */
+  if ( strcmp(argv[1], "--config") == 0 ) {
+    /*
+     * YAML configuration mode
+     */
+    if ( argc < 3 ) {
+      fprintf(stderr, "Error: --config requires a file path\n");
+      print_usage();
+      return 1;
+    }
 
-  // Create profile array and allocate memory
-  // Most of these body- or model-specific parameters can be specified as
-  // input arguments if necessary.
+    if ( config_load_yaml(&cfg, argv[2]) != 0 ) {
+      fprintf(stderr, "Error loading YAML config: %s\n", argv[2]);
+      return 1;
+    }
+
+    /* Parse optional overrides */
+    for (int i = 3; i < argc; i++) {
+      if (strcmp(argv[i], "--lat") == 0 && i+1 < argc) {
+        cfg.latitude = atof(argv[++i]);
+      } else if (strcmp(argv[i], "--ti") == 0 && i+1 < argc) {
+        cfg.thermal_inertia = atof(argv[++i]);
+      } else if (strcmp(argv[i], "--H") == 0 && i+1 < argc) {
+        cfg.H = atof(argv[++i]);
+      } else if (strcmp(argv[i], "--albedo") == 0 && i+1 < argc) {
+        cfg.albedo = atof(argv[++i]);
+      } else if (strcmp(argv[i], "--flux") == 0 && i+1 < argc) {
+        strncpy(cfg.flux_file, argv[++i], sizeof(cfg.flux_file) - 1);
+      } else if (strcmp(argv[i], "--verbose") == 0) {
+        verbose = 1;
+      } else {
+        fprintf(stderr, "Unknown option: %s\n", argv[i]);
+        print_usage();
+        return 1;
+      }
+    }
+
+  } else if ( argv[1][0] == '-' ) {
+    /* Unrecognized flag */
+    fprintf(stderr, "Unknown option: %s\n", argv[1]);
+    print_usage();
+    return 1;
+
+  } else {
+    /*
+     * Legacy positional argument mode
+     */
+    if ( argc < 5 || argc > 10 ) {
+      print_usage();
+      return 1;
+    }
+
+    cfg.latitude        = atof(argv[1]);
+    cfg.thermal_inertia = atof(argv[2]);
+    cfg.H               = atof(argv[3]);
+    cfg.albedo          = atof(argv[4]);
+    if ( argc >= 6 )  cfg.solver         = atoi(argv[5]);
+    if ( argc >= 7 )  cfg.equil_nperday  = atoi(argv[6]);
+    if ( argc >= 8 )  cfg.nperday_output = atoi(argv[7]);
+    if ( argc >= 9 )  cfg.adaptive_tol   = atof(argv[8]);
+    if ( argc >= 10 ) strncpy(cfg.flux_file, argv[9], sizeof(cfg.flux_file) - 1);
+  }
+
+  /* Print configuration if requested */
+  if (verbose) {
+    config_print(&cfg, stderr);
+  }
+
+  /* ---------------------------------------------------
+   * Create profile from configuration
+   * --------------------------------------------------- */
   p = (profileT *) malloc( sizeof(profileT) );
-  p->emis = EMIS;
-  p->latitude = latitude;
-  slope = DEFAULTSLOPE;
-  p->slopesin = sin(slope);
-  p->slopecos = cos(slope);
-  p->az = 0.0;
-  p->rau = SMA;
-  p->rotperiod = PSYNODIC;
-  p->obliq = OBLIQUITY;
-  p->albedo = atof(argv[4]);
-  p->solver = ( argc >= 6 ) ? atoi(argv[5]) : SOLVER_EXPLICIT;
-  p->equil_nperday = ( argc >= 7 ) ? atoi(argv[6]) : NPERDAY;
-  p->nperday_output = ( argc >= 8 ) ? atoi(argv[7]) : NPERDAY;
-  p->adaptive_tol = ( argc >= 9 ) ? atof(argv[8]) : 0.0;
+  if (!p) {
+    fprintf(stderr, "Error: failed to allocate profileT\n");
+    return -1;
+  }
 
-  // Initialize external flux fields (NULL = compute on-the-fly)
-  p->flux_input = NULL;
-  p->flux_input_len = 0;
-  p->flux_input_dt = 0.0;
+  config_to_profile(&cfg, p);
 
-  // Read optional external flux file
-  double *flux_data = NULL;
-  if ( argc >= 10 ) {
+  /* Read optional external flux file */
+  if ( cfg.flux_file[0] != '\0' ) {
     double flux_dt;
     int flux_nsteps;
-    flux_data = readFluxFile(argv[9], &flux_dt, &flux_nsteps);
+    flux_data = readFluxFile(cfg.flux_file, &flux_dt, &flux_nsteps);
     if ( !flux_data ) {
-      fprintf(stderr, "Error reading flux file: %s\n", argv[9]);
+      fprintf(stderr, "Error reading flux file: %s\n", cfg.flux_file);
       free(p);
-      return ( -1 );
+      return -1;
     }
     p->flux_input = flux_data;
     p->flux_input_len = flux_nsteps;
@@ -143,104 +184,119 @@ int main( int argc, char *argv[] ) {
             flux_nsteps, flux_dt, flux_nsteps * flux_dt);
   }
 
-  // When to stop the simulation
-  endtime =  (NYEARSEQ + NYEARSOUT) * getSecondsPerYear(p) + (p->rotperiod)*(NDAYSOUT + ENDHOUR/24.0);
+  /* Compute end time */
+  endtime = (p->nyearseq + NYEARSOUT) * getSecondsPerYear(p)
+          + p->rotperiod * (p->ndays_out + ENDHOUR/24.0);
 
-  // Generate model grid and thermophysical profile
-  if (!tiProfile(p, h, latitude, ti)) {
+  /* Generate model grid and thermophysical profile */
+  if ( !tiProfile(p, cfg.H, cfg.thermal_inertia, &cfg) ) {
     fprintf(stderr, "Error initializing profile\n");
     free(flux_data);
     free(p);
-    return ( -1 );
+    return -1;
   }
 
-  // Run the model
+  /* Run the model */
   thermalModel( p, endtime, stdout );
 
-  // Free memory
+  /* Free memory */
   freeProfile(p);
   free(flux_data);
-  free( p );
+  free(p);
 
-  // Done.
-  return ( 0 );
-
+  return 0;
 }
 
-int tiProfile( profileT *p, double h, double latitude, double ti ) {
+/* ================================================================
+ * tiProfile -- generate spatial grid and thermophysical properties
+ *
+ * Uses configT for grid parameters (m, n, b) and profileT for
+ * physics parameters (ks, kd, rhos, rhod, solar_const).
+ * When ti > 0, conductivity is scaled by (ti/TI0)^2.
+ * When ti == 0, uses ks/kd directly (YAML-only mode).
+ * ================================================================ */
+int tiProfile( profileT *p, double h, double ti, const configT *cfg ) {
 
   int i, nlayers;
-  double zskin, botdepth, dz[MAXLAYERS], z[MAXLAYERS], 
+  double zskin, botdepth, dz[MAXLAYERS], z[MAXLAYERS],
     rho[MAXLAYERS], t0s, t0d, t[MAXLAYERS], kc[MAXLAYERS];
 
-  FILE *fpout;
-  fpout = fopen("profile_z_dz_rho_k.txt","w");
-  
-  // Initital subsurface and surface temperatures
-  t0s = pow((1.0-p->albedo)*S0/(SIGMA*p->rau*p->rau),0.25) * pow(cos(latitude),0.25);
-  t0d = t0s/sqrt(2.0);
+  int    m = cfg->layers_per_skin_depth;   /* layers in first skin depth */
+  int    n = cfg->layer_growth_factor;     /* layer growth: dz *= (1+1/n) */
+  int    b = cfg->skin_depths_to_bottom;   /* skin depths to bottom */
 
-  // Set up first layer
-  if (!h) {
-    rho[0] = RHOD;
-  }
-  else rho[0] = RHOS;
-  kc[0] = thermCondConst(rho[0])*(ti/TI0)*(ti/TI0);
-  t[0] = t0s;
-  zskin = sqrt( p->rotperiod * kc[0]/(rho[0]*heatCap(t[0])) / PI );
-  dz[0] = zskin / NSKIN;
-  z[0] = 0.0;
-  botdepth = zskin * NSKINBOT;
-  
-  // Generate layers
+  double rhos = p->rhos_val;
+  double rhod = p->rhod_val;
+  double ks   = p->ks;
+  double kd   = p->kd;
+
+  /* Inline thermCondConst: kc = kd - (kd-ks)*(rhod-rho)/(rhod-rhos) */
+  #define KC_OF_RHO(rho) (kd - (kd - ks) * (rhod - (rho)) / (rhod - rhos))
+
+  /* TI scaling factor: when ti>0, scale conductivity by (ti/TI0)^2 */
+  double ti_scale = (ti > 0.0) ? (ti / TI0) * (ti / TI0) : 1.0;
+
+  FILE *fpout;
+  fpout = fopen("profile_z_dz_rho_k.txt", "w");
+
+  /* Initial surface and subsurface temperatures */
+  t0s = pow((1.0 - p->albedo) * p->solar_const / (SIGMA * p->rau * p->rau), 0.25)
+        * pow(cos(p->latitude), 0.25);
+  t0d = t0s / sqrt(2.0);
+
+  /* Set up first layer */
+  rho[0] = (!h) ? rhod : rhos;
+  kc[0]  = KC_OF_RHO(rho[0]) * ti_scale;
+  t[0]   = t0s;
+  zskin  = sqrt( p->rotperiod * kc[0] / (rho[0] * heatCap(t[0])) / PI );
+  dz[0]  = zskin / m;
+  z[0]   = 0.0;
+  botdepth = zskin * b;
+
+  /* Generate layers */
   i = 0;
   while ( z[i] <= botdepth && i < MAXLAYERS ) {
-
     i++;
-    dz[i] = dz[i-1]*(1.0 + 1.0/NN);
-    z[i] = z[i-1] + dz[i-1];
+    dz[i] = dz[i-1] * (1.0 + 1.0 / n);
+    z[i]  = z[i-1] + dz[i-1];
 
-    if (!h) {
-      rho[i] = RHOD;
-    }
-    else {
-      rho[i] = RHOD - (RHOD-RHOS)*exp(-z[i]/h);
-    }
-    kc[i] = thermCondConst( rho[i] )*(ti/TI0)*(ti/TI0);
+    rho[i] = (!h) ? rhod : rhod - (rhod - rhos) * exp(-z[i] / h);
+    kc[i]  = KC_OF_RHO(rho[i]) * ti_scale;
 
-    // The mean temperature follows an exponential profile (increasing) with depth
-    // It also drops with latitude as (cos(lat))^0.25
-    // Initializing temperatures in this way speeds up equilibration
-    t[i] = t0d - (t0d - t0s)*exp(-z[i]/ZTSCALE);
+    t[i] = t0d - (t0d - t0s) * exp(-z[i] / ZTSCALE);
   }
+  #undef KC_OF_RHO
 
-  // Number of layers
   nlayers = i;
 
-  // Make the profile structure array
+  /* Allocate the profile layer array */
   if ( !makeProfile(p, nlayers) ) {
     fprintf(stderr, "Error initializing profile structure array\n");
-    return( 0 );
+    if (fpout) fclose(fpout);
+    return 0;
   }
 
-  // Read profile into structure array
-  for ( i=0; i<(p->nlayers); i++ ) {
-    p->layer[i].z = z[i];
-    p->layer[i].dz = dz[i];
+  /* Populate the layer array */
+  for ( i = 0; i < p->nlayers; i++ ) {
+    p->layer[i].z   = z[i];
+    p->layer[i].dz  = dz[i];
     p->layer[i].rho = rho[i];
-    p->layer[i].kc = kc[i];
-    p->layer[i].t = t[i];
+    p->layer[i].kc  = kc[i];
+    p->layer[i].t   = t[i];
 
-    //DEBUG
-    fprintf(fpout, "%.4f %.4g %.4g %.4g\n", p->layer[i].z, p->layer[i].dz, p->layer[i].rho, p->layer[i].kc);
+    if (fpout)
+      fprintf(fpout, "%.4f %.4g %.4g %.4g\n",
+              p->layer[i].z, p->layer[i].dz, p->layer[i].rho, p->layer[i].kc);
   }
-  
-  fclose(fpout);
 
-  return ( 1 );
+  if (fpout) fclose(fpout);
 
+  return 1;
 }
 
+/* ================================================================
+ * readFluxFile -- read external flux time series from text file
+ * ================================================================ */
 double *readFluxFile( const char *path, double *dt_out, int *nsteps_out ) {
 
   FILE *fp;
@@ -255,12 +311,10 @@ double *readFluxFile( const char *path, double *dt_out, int *nsteps_out ) {
     return NULL;
   }
 
-  // Skip comment lines (starting with '#') and read "dt nsteps" line
+  /* Skip comment lines (starting with '#') and read "dt nsteps" line */
   while ( fgets(line, sizeof(line), fp) ) {
-    // Skip blank lines and comment lines
     if ( line[0] == '#' || line[0] == '\n' || line[0] == '\r' )
       continue;
-    // First non-comment line: dt nsteps
     if ( sscanf(line, "%lf %d", &dt, &nsteps) != 2 ) {
       fprintf(stderr, "readFluxFile: expected 'dt nsteps' on first data line\n");
       fclose(fp);
@@ -275,7 +329,6 @@ double *readFluxFile( const char *path, double *dt_out, int *nsteps_out ) {
     return NULL;
   }
 
-  // Allocate flux array
   flux = (double *) malloc( nsteps * sizeof(double) );
   if ( !flux ) {
     fprintf(stderr, "readFluxFile: malloc failed for %d samples\n", nsteps);
@@ -283,7 +336,6 @@ double *readFluxFile( const char *path, double *dt_out, int *nsteps_out ) {
     return NULL;
   }
 
-  // Read flux values, skipping comment lines
   i = 0;
   while ( i < nsteps && fgets(line, sizeof(line), fp) ) {
     if ( line[0] == '#' || line[0] == '\n' || line[0] == '\r' )
@@ -308,5 +360,4 @@ double *readFluxFile( const char *path, double *dt_out, int *nsteps_out ) {
   *dt_out = dt;
   *nsteps_out = nsteps;
   return flux;
-
 }

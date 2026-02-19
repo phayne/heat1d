@@ -105,3 +105,16 @@ The CLI generates the following output files:
 - `{prefix}_temperature.csv`: Temperature vs. local time for all depths
 - `{prefix}_grid.csv`: Depth grid with density and conductivity
 - `{prefix}_plot.png`: Combined profile and diurnal curve plot (unless `--no-plot`)
+
+## C Implementation
+
+The same YAML configuration files can also be used with the C implementation
+for performance-critical batch runs:
+
+```bash
+cd c/
+./heat1d_moon --config ../python/heat1d/examples/moon_default.yaml --ti 55
+```
+
+See [c/README.md](../../c/README.md) for full documentation of the C command-line
+interface, including legacy positional arguments and `--config` overrides.

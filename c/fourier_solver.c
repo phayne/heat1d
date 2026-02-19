@@ -944,13 +944,13 @@ void fourier_precompute_diurnal_flux(profileT *p, int nsteps, double *flux_out) 
     double time = 0.0;
     double nu = 0.0, dec = 0.0, r = 0.0;
 
-    updateOrbit(0.0, &nu, &dec, &r, p->rau, p->obliq);
+    updateOrbit(0.0, &nu, &dec, &r, p->rau, p->obliq, p->ecc, p->omega_peri);
 
     for (int i = 0; i < nsteps; i++) {
         radFlux(time, dec, r, p);
         flux_out[i] = p->surfflux;
         time += dt_step;
-        updateOrbit(dt_step, &nu, &dec, &r, p->rau, p->obliq);
+        updateOrbit(dt_step, &nu, &dec, &r, p->rau, p->obliq, p->ecc, p->omega_peri);
     }
 }
 
@@ -991,8 +991,8 @@ int solveFourier(profileT *p, int nperday, double *T_surf, double *lt_out,
     cfg.newton_tol = 0.5;
     cfg.max_outer = 10;
     cfg.outer_tol = 0.1;
-    cfg.chi = CHI;
-    cfg.J_geo = HEATFLOW;
+    cfg.chi = p->chi;
+    cfg.J_geo = p->heatflow;
     cfg.emissivity = p->emis;
     cfg.T_floor = 2.0;
 

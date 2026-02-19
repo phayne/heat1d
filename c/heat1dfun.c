@@ -38,7 +38,7 @@ void thermalModel( profileT *p, double endtime, FILE *fpout ) {
     double *T_surf_f = (double *)malloc(nout * sizeof(double));
     double *lt_f = (double *)malloc(nout * sizeof(double));
     double *T_all_f = (double *)malloc(nout * p->nlayers * sizeof(double));
-    int nsteps = solveFourier( p, nout, T_surf_f, lt_f, NDAYSOUT, T_all_f );
+    int nsteps = solveFourier( p, nout, T_surf_f, lt_f, p->ndays_out, T_all_f );
     fploctime = fopen("loctime.txt","w");
     for ( i = 0; i < nsteps; i++ ) {
       int j;
@@ -57,7 +57,7 @@ void thermalModel( profileT *p, double endtime, FILE *fpout ) {
   /* Initialize orbit */
   nu = 0.0;
   dtime = 0.0;
-  updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
+  updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq, p->ecc, p->omega_peri );
 
   /* --- Phase 1: Equilibration --- */
   /* Try Fourier solver (fast, frequency-domain); fall back to implicit. */
@@ -66,7 +66,7 @@ void thermalModel( profileT *p, double endtime, FILE *fpout ) {
   user_solver = p->solver;
   const double *saved_flux = p->flux_input;
   p->flux_input = NULL;
-  equiltime = NYEARSEQ * getSecondsPerYear( p );
+  equiltime = p->nyearseq * getSecondsPerYear( p );
 
   if ( !equilibrateFourier(p) ) {
     /* Fallback: implicit time-stepping equilibration */
@@ -80,14 +80,14 @@ void thermalModel( profileT *p, double endtime, FILE *fpout ) {
       getModelParams( p );
       thermCondProf( p );
       time += dtime;
-      updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
+      updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq, p->ecc, p->omega_peri );
     }
   }
 
   /* Re-initialize orbit to epoch (t=0) for output phase */
   nu = 0.0;
   dtime = 0.0;
-  updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
+  updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq, p->ecc, p->omega_peri );
 
   /* --- Phase 2: Output using user-selected solver --- */
   p->solver = user_solver;
@@ -104,7 +104,7 @@ void thermalModel( profileT *p, double endtime, FILE *fpout ) {
   if ( p->solver == SOLVER_EXPLICIT ) {
     dtime = getTimeStep( p );
   } else {
-    dtime = p->rotperiod / NPERDAY;
+    dtime = p->rotperiod / p->equil_nperday;
   }
 
   time = 0.0;
@@ -140,7 +140,7 @@ void thermalModel( profileT *p, double endtime, FILE *fpout ) {
       }
 
       time += dtime;
-      updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
+      updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq, p->ecc, p->omega_peri );
     }
 
     /* Write output */
@@ -194,7 +194,7 @@ int thermalModelCollect( profileT *p, int nyears_eq, int ndays_out,
   /* Initialize orbit */
   nu = 0.0;
   dtime = 0.0;
-  updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
+  updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq, p->ecc, p->omega_peri );
 
   /* --- Phase 1: Equilibration --- */
   /* Try Fourier solver (fast, frequency-domain); fall back to implicit. */
@@ -214,14 +214,14 @@ int thermalModelCollect( profileT *p, int nyears_eq, int ndays_out,
       getModelParams( p );
       thermCondProf( p );
       time += dtime;
-      updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
+      updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq, p->ecc, p->omega_peri );
     }
   }
 
   /* Re-initialize orbit to epoch (t=0) for output phase */
   nu = 0.0;
   dtime = 0.0;
-  updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
+  updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq, p->ecc, p->omega_peri );
 
   /* --- Phase 2: Output using user-selected solver --- */
   p->solver = user_solver;
@@ -229,7 +229,7 @@ int thermalModelCollect( profileT *p, int nyears_eq, int ndays_out,
   if ( p->solver == SOLVER_EXPLICIT ) {
     dtime = getTimeStep( p );
   } else {
-    dtime = p->rotperiod / NPERDAY;
+    dtime = p->rotperiod / p->equil_nperday;
   }
 
   dtout = p->rotperiod / nperday;
@@ -270,7 +270,7 @@ int thermalModelCollect( profileT *p, int nyears_eq, int ndays_out,
         getModelParams( p );
         thermCondProf( p );
         time += dtime;
-        updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq );
+        updateOrbit( dtime, &nu, &dec, &r, p->rau, p->obliq, p->ecc, p->omega_peri );
       }
     }
 
@@ -323,12 +323,12 @@ double vaporPressureIce( double t ) {
 
 }
 
-void updateOrbit( double dtime, double *nu, double *dec, double *r, 
-		  double rau, double obliq ) {
+void updateOrbit( double dtime, double *nu, double *dec, double *r,
+		  double rau, double obliq, double ecc, double omega ) {
 
   double nudot;
 
-  orbitParams( rau, ECC, obliq, OMEGA, *nu, dec, r, &nudot );
+  orbitParams( rau, ecc, obliq, omega, *nu, dec, r, &nudot );
 
   *nu += nudot * dtime;
 
@@ -378,10 +378,10 @@ double getTimeStep( profileT *p ) {
   int i;
   double dt, dtmin;
 
-  dtmin = FOM * p->layer[0].rhocp * p->layer[0].dz * p->layer[0].dz / p->layer[0].k;
+  dtmin = p->fom * p->layer[0].rhocp * p->layer[0].dz * p->layer[0].dz / p->layer[0].k;
 
   for ( i=1; i<(p->nlayers-1); i++ ) {
-    dt = FOM * p->layer[i].rhocp * p->layer[i].dz * p->layer[i].dz / p->layer[i].k;
+    dt = p->fom * p->layer[i].rhocp * p->layer[i].dz * p->layer[i].dz / p->layer[i].k;
     dtmin = ( dt < dtmin ) ? dt : dtmin;
   }
 
@@ -513,7 +513,7 @@ void radFlux( double time, double dec, double r, profileT *p ) {
   // Total flux accounts for insolation and infrared from ground
   hss = sin(0.5*acos(p->slopecos));
   hss = hss*hss;
-  p->surfflux = (1.0 - A) * (S0 / (r*r)) * ( inccos + hss*cosz );
+  p->surfflux = (1.0 - A) * (p->solar_const / (r*r)) * ( inccos + hss*cosz );
 
   if ( !(p->surfflux) ) {
     p->surfflux = p->emis*SIGMA*pow(p->layer[0].t,4.0)*hss;
@@ -522,7 +522,7 @@ void radFlux( double time, double dec, double r, profileT *p ) {
 
   // Bowl-shaped crater:
   /*
-  p->surfflux = (1.0 - A) * (S0 / (r*r)) * costheta;
+  p->surfflux = (1.0 - A) * (p->solar_const / (r*r)) * costheta;
   if ( costheta && costheta < CRITCOS ) {
     p->surfflux *= 4.0*(p->emis + A)/DSQUARED;
   }
@@ -578,7 +578,8 @@ void thermCondConstProf( profileT *p ) {
   int i;
 
   for ( i=0; i<p->nlayers; i++ ) {
-    p->layer[i].kc = thermCondConst( p->layer[i].rho );
+    p->layer[i].kc = p->kd - (p->kd - p->ks) * (p->rhod_val - p->layer[i].rho)
+                     / (p->rhod_val - p->rhos_val);
   }
 
 }
@@ -594,9 +595,9 @@ void radParamProf( profileT *p ) {
   int i;
 
   for ( i=0; i<p->nlayers; i++ ) {
-    p->layer[i].b = radParam( p->layer[i].kc );
+    p->layer[i].b = p->R350_val * p->layer[i].kc;
     //VASAVADA:
-    //p->layer[i].b = radParam( KS );
+    //p->layer[i].b = p->R350_val * p->ks;
   }
 
 }
@@ -658,7 +659,7 @@ double surfTemp( profileT *p, double time, double dec, double r ) {
   double cutoff, dt, k, f1, f2, tsurf, tm, rad, tddz, twodz, dtdz;
 
   // Absolute convergence criterion [K]
-  cutoff = DTSURF;
+  cutoff = p->dtsurf;
 
   tsurf = p->layer[0].t;
   dt = tsurf;
@@ -730,7 +731,7 @@ double botTemp( profileT *p ) {
   n = p->nlayers - 1;
   kp = 0.5 * (p->layer[n].k + p->layer[n-1].k);
 
-  tbot = p->layer[n].dz * (HEATFLOW/kp) + p->layer[n-1].t;
+  tbot = p->layer[n].dz * (p->heatflow/kp) + p->layer[n-1].t;
 
   return ( tbot );
 
@@ -967,7 +968,7 @@ int advanceAdaptive( profileT *p, double *time, double dt_max,
   heatCapProf( p );
   getModelParams( p );
   thermCondProf( p );
-  updateOrbit( dt_half, nu, dec, r, p->rau, p->obliq );
+  updateOrbit( dt_half, nu, dec, r, p->rau, p->obliq, p->ecc, p->omega_peri );
 
   /* Second half-step */
   updateTemperatures( p, *time + dt_half, dt_half, *dec, *r );
@@ -985,7 +986,7 @@ int advanceAdaptive( profileT *p, double *time, double dt_max,
   if ( maxerr < tol ) {
     /* Accept the half-step result (already in p->layer[i].t) */
     *time += dt_max;
-    updateOrbit( dt_half, nu, dec, r, p->rau, p->obliq );
+    updateOrbit( dt_half, nu, dec, r, p->rau, p->obliq, p->ecc, p->omega_peri );
     return 1;
   } else {
     /* Reject — restore original state */

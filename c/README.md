@@ -7,26 +7,28 @@ with depth- and temperature-dependent thermophysical properties following
 
 ## Prerequisites
 
-The only external dependency is [FFTW3](http://www.fftw.org/) (used by the
-Fourier-matrix solver). LAPACK/BLAS are also required on Linux; macOS uses the
-built-in Accelerate framework.
+External dependencies:
+- [FFTW3](http://www.fftw.org/) -- used by the Fourier-matrix solver
+- [libyaml](https://pyyaml.org/wiki/LibYAML) -- used by the YAML configuration parser
+
+LAPACK/BLAS are also required on Linux; macOS uses the built-in Accelerate framework.
 
 **macOS** (Homebrew):
 
 ```bash
-brew install fftw
+brew install fftw libyaml
 ```
 
 **Ubuntu / Debian**:
 
 ```bash
-sudo apt install libfftw3-dev liblapack-dev
+sudo apt install libfftw3-dev liblapack-dev libyaml-dev
 ```
 
 **Fedora / RHEL**:
 
 ```bash
-sudo dnf install fftw-devel lapack-devel
+sudo dnf install fftw-devel lapack-devel libyaml-devel
 ```
 
 ## Building
@@ -79,10 +81,73 @@ current directory:
 ./heat1d_moon 0 30 0.06 0.12 > fluffy.txt
 ```
 
-## Command-Line Arguments
+## YAML Configuration
+
+The C code can read the **same YAML configuration files** used by the Python
+implementation. This allows all physical and numerical parameters to be set
+without recompiling.
+
+```bash
+./heat1d_moon --config ../python/heat1d/examples/moon_default.yaml --ti 55
+```
+
+The `--config` flag loads the YAML file, then optional CLI flags override
+individual values:
+
+| Flag | Description |
+|---|---|
+| `--config <file>` | YAML configuration file (required for YAML mode) |
+| `--lat <degrees>` | Override latitude |
+| `--ti <value>` | Override thermal inertia |
+| `--H <value>` | Override H-parameter |
+| `--albedo <value>` | Override albedo |
+| `--flux <file>` | External flux file |
+| `--verbose` | Print full configuration to stderr |
+
+### YAML File Format
+
+The YAML file has three main sections: `planet`, `numerical`, and `physical`.
+All fields are optional; unspecified values use compile-time defaults.
+
+```yaml
+planet:
+  name: "Moon"
+  albedo: 0.12
+  emissivity: 0.95
+  ks: 7.4e-4          # surface conductivity [W/m/K]
+  kd: 3.4e-3          # deep conductivity [W/m/K]
+  rhos: 1100.0         # surface density [kg/m^3]
+  rhod: 1800.0         # deep density [kg/m^3]
+  H: 0.06              # H-parameter [m]
+  Qb: 0.018            # interior heat flow [W/m^2]
+  day: 2550240.0       # synodic solar day [s]
+  obliquity: 0.0       # axial tilt [rad]
+  eccentricity: 0.0
+  rAU: 1.0             # semi-major axis [AU]
+
+latitude: 0.0            # degrees
+ndays: 1                 # number of output days
+solver: "implicit"       # "explicit", "crank-nicolson", "implicit", or "fourier-matrix"
+
+numerical:
+  accuracy: 1.0                # adaptive timestepping tolerance [K]
+  output_interval: 53130       # output spacing [s]
+  fourier_number: 0.5
+  layers_per_skin_depth: 10
+  layer_growth_factor: 5
+  skin_depths_to_bottom: 20
+  surface_temp_accuracy: 0.1   # [K]
+  equilibration_years: 1
+
+physical:
+  solar_constant: 1361.0       # [W/m^2]
+  radiative_conductivity: 2.7  # chi parameter
+```
+
+## Command-Line Arguments (Legacy Mode)
 
 ```
-./heat1d_moon [lat] [T.I.] [H] [albedo] [solver] [equil_nperday] [nperday_output] [adaptive_tol] [flux_file]
+./heat1d_moon <lat> <T.I.> <H> <albedo> [solver] [equil_nperday] [nperday_output] [adaptive_tol] [flux_file]
 ```
 
 The first four arguments are required; the rest are optional.
@@ -192,13 +257,15 @@ All physical constants are defined in `heat1dfun.h`. Key values for the Moon
 
 | File | Description |
 |---|---|
-| `heat1d_moon.c` | Main program: argument parsing, grid setup, simulation driver |
+| `heat1d_moon.c` | Main program: CLI/YAML parsing, grid setup, simulation driver |
 | `heat1dfun.c` | Core solver: time-stepping, boundary conditions, material properties |
 | `heat1dfun.h` | Constants, structures (`layerT`, `profileT`), function prototypes |
 | `orbitfun.c` | Orbital mechanics: solar zenith angle, hour angle, orbit update |
 | `orbitfun.h` | Orbital function prototypes |
 | `fourier_solver.c` | Frequency-domain Fourier-matrix solver (requires FFTW3) |
 | `fourier_solver.h` | Fourier solver structures and prototypes |
+| `yaml_config.c` | YAML configuration parser (requires libyaml) |
+| `yaml_config.h` | Configuration struct (`configT`) and prototypes |
 | `test_validate.c` | Validation tests against Hayne et al. (2017) Table A2 |
 | `Makefile` | Build system (auto-detects macOS/Linux) |
 

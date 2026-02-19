@@ -52,6 +52,27 @@ static void check_cond( const char *name, int cond, const char *detail ) {
 
 
 /*
+ * init_profile_defaults() - set runtime-configurable profileT fields
+ * to their compile-time #define defaults.
+ */
+static void init_profile_defaults( profileT *p ) {
+  p->solar_const = S0;
+  p->chi = CHI;
+  p->R350_val = CHI * R350;
+  p->ks = KS;
+  p->kd = KD;
+  p->rhos_val = RHOS;
+  p->rhod_val = RHOD;
+  p->heatflow = HEATFLOW;
+  p->fom = FOM;
+  p->dtsurf = DTSURF;
+  p->ecc = ECC;
+  p->omega_peri = OMEGA;
+  p->nyearseq = NYEARSEQ;
+  p->ndays_out = NDAYSOUT;
+}
+
+/*
  * tiProfile() - same grid generation as heat1d_moon.c
  */
 static int tiProfile( profileT *p, double h, double latitude, double ti,
@@ -116,6 +137,7 @@ static profileT *create_moon_profile_ex( double albedo, double ti, double h,
   profileT *p = (profileT *) malloc( sizeof(profileT) );
   if (!p) return NULL;
 
+  init_profile_defaults( p );
   p->emis = EMIS;
   p->latitude = lat_deg * PI / 180.0;
   p->slopesin = 0.0;
