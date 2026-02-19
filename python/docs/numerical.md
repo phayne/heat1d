@@ -149,13 +149,14 @@ For a periodic surface forcing with period $P$, the temperature at any depth
 can be decomposed into Fourier harmonics:
 
 $$
-T(z, t) = \bar{T}(z) + \sum_{n=1}^{N/2} \hat{T}_n(z) \, e^{i n \omega_0 t} + \text{c.c.}
+T(z, t) = \bar{T}(z) + \sum_{n=1}^{N/2} \left[ \hat{T}_n(z) \, e^{i n \omega_0 t} + \hat{T}_n^*(z) \, e^{-i n \omega_0 t} \right]
 $$
 
-where $\omega_0 = 2\pi / P$ is the fundamental angular frequency and
-$\bar{T}(z)$ is the time-mean (DC) temperature profile. Each harmonic
-propagates independently through the subsurface, with amplitude decaying and
-phase shifting according to the thermal properties of each layer.
+where $\omega_0 = 2\pi / P$ is the fundamental angular frequency,
+$\bar{T}(z)$ is the time-mean (DC) temperature profile, and the asterisk
+denotes the complex conjugate. Each harmonic propagates independently through
+the subsurface, with amplitude decaying and phase shifting according to the
+thermal properties of each layer.
 
 ### Transmission Matrices
 
@@ -165,27 +166,37 @@ matrix (analogous to electrical transmission lines):
 
 $$
 \begin{pmatrix} \hat{T} \\ \hat{q} \end{pmatrix}_{\text{top}} =
-\begin{pmatrix} \cosh(qd) & \frac{\sinh(qd)}{kq} \\
-kq \sinh(qd) & \cosh(qd) \end{pmatrix}
+\begin{pmatrix} \cosh(\gamma d) & \frac{\sinh(\gamma d)}{K\gamma} \\
+K\gamma \sinh(\gamma d) & \cosh(\gamma d) \end{pmatrix}
 \begin{pmatrix} \hat{T} \\ \hat{q} \end{pmatrix}_{\text{bottom}}
 $$
 
-where $q = \sqrt{i\omega / \kappa}$ is the complex thermal wavenumber, $k$ is
-the thermal conductivity, and $\kappa = k / (\rho c_p)$ is the thermal
-diffusivity. The matrix product over all layers gives the global transfer from
-the surface to the bottom boundary, and the **surface thermal impedance** is:
+where $\gamma = \sqrt{i\omega / \kappa}$ is the complex thermal wavenumber
+(Carslaw & Jaeger, 1959), $K$ is
+the thermal conductivity, and $\kappa = K / (\rho c_p)$ is the thermal
+diffusivity. This is the *thermal quadrupole* formalism (Pipes, 1957;
+Maillet et al., 2000): each layer matrix $\mathbf{M}_j$ maps the temperature
+and flux at the bottom of that layer to the top. The cumulative matrix product
+$\mathbf{P} = \mathbf{M}_0 \mathbf{M}_1 \cdots \mathbf{M}_{N-1}$, accumulated
+from the deepest layer to the surface, gives the global transfer from the
+bottom boundary to the surface. The **surface thermal impedance** is:
 
 $$
 Z_{\text{surf}}(\omega) = \frac{\hat{T}_{\text{surf}}}{\hat{q}_{\text{surf}}} = \frac{P_{00}}{P_{10}}
 $$
 
-where $P_{00}$ and $P_{10}$ are elements of the cumulative matrix product.
+where $P_{00}$ and $P_{10}$ are elements of $\mathbf{P}$. This follows from
+the bottom boundary condition: for AC harmonics ($n \geq 1$), the flux
+perturbation at depth vanishes ($\hat{q}_{\text{bot}} = 0$), so
+$\hat{T}_{\text{surf}} = P_{00} \hat{T}_{\text{bot}}$ and
+$\hat{q}_{\text{surf}} = P_{10} \hat{T}_{\text{bot}}$, giving $Z = P_{00}/P_{10}$.
 
 ### Nonlinear Surface Radiation
 
 The surface energy balance $\varepsilon \sigma T_s^4 = Q_s + q_{\text{cond}}$
 is nonlinear in $T_s$. The solver handles this via Newton iteration in the
-time domain. The conductive heat flux at the surface is computed from the
+time domain, a *harmonic balance* approach (Kundert &
+Sangiovanni-Vincentelli, 1986) adapted from nonlinear circuit analysis. The conductive heat flux at the surface is computed from the
 frequency-domain admittance (inverse impedance) as a circulant matrix $\mathbf{C}$:
 
 $$
@@ -217,8 +228,8 @@ The solver captures this through an outer iteration loop:
 
 1. **Freeze properties** at the current equilibrium profile $\bar{T}(z)$
 2. **Solve** the linearized frequency-domain problem (inner Newton loop)
-3. **Compute rectification flux** $J_{\text{pump}}(z) = \langle k(T) \, \partial T'/\partial z \rangle$ from the time-domain reconstruction of $T(z,t)$ and the exact nonlinear $k(T)$
-4. **Update the equilibrium profile** by integrating $d\bar{T}/dz = (Q_b - J_{\text{pump}}) / \langle k \rangle$ downward from the surface
+3. **Compute rectification flux** $J_{\text{pump}}(z) = \langle K(T) \, \partial \tilde{T}/\partial z \rangle$ from the time-domain reconstruction of $T(z,t)$ and the exact nonlinear $K(T)$, where $\tilde{T}(z,t) = T(z,t) - \bar{T}(z)$ is the AC (oscillatory) component and $\langle \cdot \rangle$ denotes the time average over one period
+4. **Update the equilibrium profile** by integrating $d\bar{T}/dz = (Q_b - J_{\text{pump}}(z)) / K_{\text{eff}}(z)$ downward from the surface using 4th-order Runge-Kutta, where $K_{\text{eff}}(z) = \langle K(T(z,t)) \rangle$ is the exact time-averaged conductivity computed from the full reconstructed $T(z,t)$
 5. **Repeat** until the mean surface temperature converges (typically 3--5 outer iterations)
 
 ### Depth Reconstruction
@@ -258,7 +269,12 @@ diurnal cycle because:
 | Explicit | Forward Euler | $O(\Delta t)$ | Conditional | ~830 | 1× |
 | Implicit | Backward Euler + TDMA | $O(\Delta t)$ | Unconditional | ~24 | ~35× |
 | Crank-Nicolson | Semi-implicit + TDMA | $O(\Delta t^2)$ | Unconditional | ~24 | ~35× |
-| Fourier-matrix | Frequency domain | Spectral | N/A (periodic) | N/A | ~1000× |
+| Fourier-matrix | Frequency domain | Spectral$^*$ | N/A (periodic) | N/A | ~1000× |
+
+$^*$Fourier-matrix accuracy is controlled by the number of harmonics $N$, not by a
+time-step size. Truncation errors decay exponentially with $N$ for smooth forcing
+(spectral convergence). In practice, $N \sim 100$--$500$ harmonics suffice for
+sub-mK accuracy on the lunar diurnal cycle.
 
 For time-stepping applications, the Crank-Nicolson scheme is recommended: it
 offers second-order accuracy with the same unconditional stability as the fully
@@ -278,3 +294,17 @@ profile directly, then initializes the time-stepping solver from $T(t=0, z)$
 (local noon). This eliminates the need for multi-orbit spin-up and ensures the
 time-stepping solver starts from a well-converged state. See
 [Equilibration](equilibration.md) for details.
+
+## References
+
+Carslaw, H. S., & Jaeger, J. C. (1959). *Conduction of Heat in Solids* (2nd ed.). Oxford University Press.
+
+Hayne, P. O., et al. (2017). Global regolith thermophysical properties of the Moon from the Diviner Lunar Radiometer Experiment. *J. Geophys. Res. Planets*, 122, 2371--2400. [doi:10.1002/2017JE005387](https://doi.org/10.1002/2017JE005387)
+
+Kundert, K. S., & Sangiovanni-Vincentelli, A. (1986). Simulation of nonlinear circuits in the frequency domain. *IEEE Trans. Computer-Aided Design*, 5(4), 521--535. [doi:10.1109/TCAD.1986.1270223](https://doi.org/10.1109/TCAD.1986.1270223)
+
+Linsky, J. L. (1966). Models of the lunar surface including temperature-dependent thermal properties. *Icarus*, 5, 606--634. [doi:10.1016/0019-1035(66)90075-3](https://doi.org/10.1016/0019-1035(66)90075-3)
+
+Maillet, D., André, S., Batsale, J.-C., Degiovanni, A., & Moyne, C. (2000). *Thermal Quadrupoles: Solving the Heat Equation through Integral Transforms*. Wiley. [doi:10.1002/9780470694374](https://doi.org/10.1002/9780470694374)
+
+Pipes, L. A. (1957). Matrix analysis of heat transfer problems. *Journal of the Franklin Institute*, 263(3), 195--206. [doi:10.1016/0016-0032(57)90927-6](https://doi.org/10.1016/0016-0032(57)90927-6)

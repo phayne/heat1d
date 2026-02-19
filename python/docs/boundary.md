@@ -31,7 +31,7 @@ distance in AU, and $A(\theta)$ is the incidence angle-dependent albedo.
 ### Angle-Dependent Albedo
 
 The albedo model follows Keihm (1984) and Vasavada et al. (2012), as used in
-Hayne et al. (2017), Eq. A10:
+Hayne et al. (2017), Eq. A8:
 
 $$
 A(\theta) = A_0 + a \left(\frac{\theta}{\pi/4}\right)^3
@@ -39,7 +39,7 @@ A(\theta) = A_0 + a \left(\frac{\theta}{\pi/4}\right)^3
 $$
 
 where $A_0$ is the normal bolometric Bond albedo (0.12 for highland,
-0.07 for mare; Hayne et al. 2017), $a = 0.06$, and $b = 0.25$
+0.06 for mare; Hayne et al. 2017), $a = 0.06$, and $b = 0.25$
 for the Moon. The angle-dependent enhancement causes the effective hemispheric
 Bond albedo to exceed $A_0$.
 
