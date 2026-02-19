@@ -174,7 +174,7 @@ f'(T_s) = 4 \varepsilon \sigma T_s^3 - 3 B_0 T_s^2 \frac{4T_1 - 3T_0 - T_2}{2 \D
 $$
 
 where $B_0$ is the radiative conductivity prefactor at the surface. The
-iteration $T_s^{(k+1)} = T_s^{(k)} - f/f'$ converges when
+iteration $T_s^{(k+1)}$ = $T_s^{(k)} - f/f'$ converges when
 $|\Delta T| < \epsilon$ (default: 0.1 K), typically in 2--5 iterations.
 
 ## Bottom Boundary Condition
@@ -230,7 +230,11 @@ $$
 T_i^{n+1} = T_i^n + \frac{\Delta t}{\rho_i c_{p,i}} \left[ \alpha_i T_{i-1}^n - (\alpha_i + \beta_i) T_i^n + \beta_i T_{i+1}^n \right] \qquad \text{(A17)}
 $$
 
-where $\alpha_i = p_i K_{i-1}$ and $\beta_i = q_i K_i$.
+where
+
+$$
+\alpha_i = p_i K_{i-1}, \quad \beta_i = q_i K_i
+$$
 
 For the full discretization of all four solvers (explicit, implicit,
 Crank-Nicolson, Fourier-matrix), see [Numerical Methods](numerical.md).

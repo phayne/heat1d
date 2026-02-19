@@ -36,7 +36,11 @@ T_i^{n+1} = T_i^n + \frac{\Delta t}{\rho_i c_{p,i}}
 \left[ \alpha_i T_{i-1}^n - (\alpha_i + \beta_i) T_i^n + \beta_i T_{i+1}^n \right]
 $$
 
-where $\alpha_i = p_i K_{i-1}$ and $\beta_i = q_i K_i$.
+where
+
+$$
+\alpha_i = p_i K_{i-1}, \quad \beta_i = q_i K_i
+$$
 
 **Stability**: The explicit scheme is conditionally stable, requiring the
 CFL condition:
@@ -134,7 +138,11 @@ x_i = d'_i - c'_i x_{i+1}
 $$
 
 The algorithm is numerically stable for the heat equation because the coefficient
-matrix is always diagonally dominant: $\lvert m_i\rvert = 1 + a_i + b_i > \lvert a_i\rvert + \lvert b_i\rvert$.
+matrix is always diagonally dominant:
+
+$$
+\lvert m_i\rvert = 1 + a_i + b_i > \lvert a_i\rvert + \lvert b_i\rvert
+$$
 
 ## Fourier-Matrix Solver (Frequency Domain)
 
@@ -177,9 +185,13 @@ the thermal conductivity, and $\kappa = K / (\rho c_p)$ is the thermal
 diffusivity. This is the *thermal quadrupole* formalism (Pipes, 1957;
 Maillet et al., 2000): each layer matrix $\mathbf{M}_j$ maps the temperature
 and flux at the bottom of that layer to the top. The cumulative matrix product
-$\mathbf{P} = \mathbf{M}_0 \mathbf{M}_1 \cdots \mathbf{M}_{N-1}$, accumulated
-from the deepest layer to the surface, gives the global transfer from the
-bottom boundary to the surface. The **surface thermal impedance** is:
+
+$$
+\mathbf{P} = \mathbf{M}_0 \mathbf{M}_1 \cdots \mathbf{M}_{N-1}
+$$
+
+accumulated from the deepest layer to the surface, gives the global transfer
+from the bottom boundary to the surface. The **surface thermal impedance** is:
 
 $$
 Z_{\text{surf}}(\omega) = \frac{\hat{T}_{\text{surf}}}{\hat{q}_{\text{surf}}} = \frac{P_{00}}{P_{10}}
@@ -188,12 +200,22 @@ $$
 where $P_{00}$ and $P_{10}$ are elements of $\mathbf{P}$. This follows from
 the bottom boundary condition: for AC harmonics ($n \geq 1$), the flux
 perturbation at depth vanishes ($\hat{q}_{\text{bot}} = 0$), so
-$\hat{T}_{\text{surf}} = P_{00} \hat{T}_{\text{bot}}$ and
-$\hat{q}_{\text{surf}} = P_{10} \hat{T}_{\text{bot}}$, giving $Z = P_{00}/P_{10}$.
+
+$$
+\hat{T}_{\text{surf}} = P_{00} \hat{T}_{\text{bot}}, \quad
+\hat{q}_{\text{surf}} = P_{10} \hat{T}_{\text{bot}}
+$$
+
+giving $Z$ = $P_{00}$/$P_{10}$.
 
 ### Nonlinear Surface Radiation
 
-The surface energy balance $\varepsilon \sigma T_s^4 = Q_s + q_{\text{cond}}$
+The surface energy balance
+
+$$
+\varepsilon \sigma T_s^4 = Q_s + q_{\text{cond}}
+$$
+
 is nonlinear in $T_s$. The solver handles this via Newton iteration in the
 time domain, a *harmonic balance* approach (Kundert &
 Sangiovanni-Vincentelli, 1986) adapted from nonlinear circuit analysis. The conductive heat flux at the surface is computed from the
@@ -204,8 +226,13 @@ $$
 $$
 
 where $\mathbf{C}$ is constructed from the inverse FFT of the admittance
-spectrum $Y(\omega_n) = 1 / Z_{\text{surf}}(\omega_n)$. The Newton update at
-each iteration is:
+spectrum
+
+$$
+Y(\omega_n) = 1 / Z_{\text{surf}}(\omega_n)
+$$
+
+The Newton update at each iteration is:
 
 $$
 \delta \mathbf{T}_s = \left( \mathbf{J} + \mathbf{C} \right)^{-1} \mathbf{R}
@@ -229,7 +256,13 @@ The solver captures this through an outer iteration loop:
 1. **Freeze properties** at the current equilibrium profile $\bar{T}(z)$
 2. **Solve** the linearized frequency-domain problem (inner Newton loop)
 3. **Compute rectification flux** $J_{\text{pump}}(z) = \langle K(T) \, \partial \tilde{T}/\partial z \rangle$ from the time-domain reconstruction of $T(z,t)$ and the exact nonlinear $K(T)$, where $\tilde{T}(z,t) = T(z,t) - \bar{T}(z)$ is the AC (oscillatory) component and $\langle \cdot \rangle$ denotes the time average over one period
-4. **Update the equilibrium profile** by integrating $d\bar{T}/dz = (Q_b - J_{\text{pump}}(z)) / K_{\text{eff}}(z)$ downward from the surface using 4th-order Runge-Kutta, where $K_{\text{eff}}(z) = \langle K(T(z,t)) \rangle$ is the exact time-averaged conductivity computed from the full reconstructed $T(z,t)$
+4. **Update the equilibrium profile** by integrating
+
+   $$
+   d\bar{T}/dz = (Q_b - J_{\text{pump}}(z)) / K_{\text{eff}}(z)
+   $$
+
+   downward from the surface using 4th-order Runge-Kutta, where $K_{\text{eff}}(z) = \langle K(T(z,t)) \rangle$ is the exact time-averaged conductivity computed from the full reconstructed $T(z,t)$
 5. **Repeat** until the mean surface temperature converges (typically 3--5 outer iterations)
 
 ### Depth Reconstruction
