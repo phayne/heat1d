@@ -125,6 +125,26 @@ This approach is ~1000× faster than time-stepping because it solves the periodi
 
 The Fourier-matrix approach builds on the harmonic decomposition of periodic lunar thermal models introduced by [Linsky (1966)](https://doi.org/10.1016/0019-1035(66)90075-3), the thermal quadrupole (transfer matrix) formalism of [Pipes (1957)](https://doi.org/10.1016/0016-0032(57)90927-6) and [Maillet et al. (2000)](https://doi.org/10.1002/9780470694374), and the harmonic balance technique for nonlinear periodic circuits ([Kundert & Sangiovanni-Vincentelli, 1986](https://doi.org/10.1109/TCAD.1986.1270223)). The solid-state greenhouse (thermal pumping) correction follows the analysis of [Linsky (1966)](https://doi.org/10.1016/0019-1035(66)90075-3), Section V. For detailed equations and derivations, see the [Numerical Methods](python/docs/numerical.md) documentation.
 
+## PSR Crater Modeling
+
+`heat1d` can model temperatures on the floors of **permanently shadowed regions** (PSRs) in bowl-shaped polar craters, following the analytical framework of [Ingersoll & Svitek (1992)](https://doi.org/10.1016/0019-1035(92)90017-2). The crater floor receives no direct sunlight but is heated by scattered sunlight and thermal infrared re-emitted by the illuminated crater walls.
+
+The crater geometry is parameterized by the depth-to-diameter ratio $d/D$, which determines the surface area ratio $f = 4(d/D)^2 / [1 + 4(d/D)^2]$ and the crater half-angle $\beta = \arccos(1 - 2f)$. A PSR exists when the maximum solar elevation angle at the given latitude is less than $\beta$, setting a minimum $d/D$ that increases with distance from the pole. For the Moon ($\epsilon \approx 1.54$°), even shallow craters ($d/D \approx 0.01$) can host PSRs at the poles, while at 70° latitude only the deepest simple craters ($d/D \gtrsim 0.1$) qualify.
+
+The model accounts for cavity radiation trapping (enhanced effective emissivity) and computes the absorbed flux from wall scattering. PSR mode works with all time-stepping solvers and adaptive timestepping, but not with the Fourier-matrix solver (which automatically falls back to implicit).
+
+```bash
+# PSR crater floor at 85°N with d/D = 0.2
+heat1d --lat 85 --psr-d-D 0.2 --ndays 1
+```
+
+```python
+model = Model(planet=planets.Moon, lat=np.deg2rad(85), ndays=1, psr_d_D=0.2)
+model.run()
+```
+
+For the full derivation and formulas, see the [Boundary Conditions](python/docs/boundary.md) documentation.
+
 ## Graphical User Interface
 
 The GUI provides interactive control over all model parameters with real-time visualization:
