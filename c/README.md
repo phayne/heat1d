@@ -1,35 +1,210 @@
-# heat1d
-Thermal model for planetary applications
+# heat1d -- C Implementation
 
-## C-version
-This is the native `C`-language implementation of the thermal code. It is the most computationally efficient version, though perhaps the least user-friendly.
+Native C implementation of the 1-D thermal model for planetary regolith.
+This is the most computationally efficient version, solving the heat equation
+with depth- and temperature-dependent thermophysical properties following
+[Hayne et al. (2017)](https://doi.org/10.1002/2017JE005387).
 
-Here are instructions for installing, running, and customizing the model.
+## Prerequisites
 
-First, download the following files and place them in your own directory:
+The only external dependency is [FFTW3](http://www.fftw.org/) (used by the
+Fourier-matrix solver). LAPACK/BLAS are also required on Linux; macOS uses the
+built-in Accelerate framework.
 
-* `heat1d_moon.c` - the core program
-* `heat1dfun.c` - subroutines used by the core program
-* `heat1dfun.h` - header file for `heat1dfun.h` containing function prototypes
-* `orbitfun.c` - subroutines for orbital elements and related functions
-* `orbitfun.h` - header file containing function prototypes for `orbitfun.c`
+**macOS** (Homebrew):
 
-With these files in the same directory, compile the program using a standard compiler such as `gcc`:
+```bash
+brew install fftw
+```
 
-`gcc -lm heat1d_moon.c heat1dfun.c orbitfun.c -o heat1d_moon`
+**Ubuntu / Debian**:
 
-The `-lm` flag tells `gcc` to link the mathematics standard library, and the executable program is called `heat1d_moon` in this case. To display the usage, simply run the program with no input arguments:
+```bash
+sudo apt install libfftw3-dev liblapack-dev
+```
+
+**Fedora / RHEL**:
+
+```bash
+sudo dnf install fftw-devel lapack-devel
+```
+
+## Building
+
+From the `c/` directory:
+
+```bash
+make
+```
+
+This produces the `heat1d_moon` executable. The Makefile auto-detects macOS vs.
+Linux for library paths and framework linkage.
+
+To build and run the validation test suite:
+
+```bash
+make test
+```
+
+## Quick Start
+
+Run the Moon at the equator with standard parameters:
+
+```bash
+./heat1d_moon 0 55 0.06 0.12 > temperature.txt
+```
+
+This simulates one diurnal cycle at the lunar equator with:
+- Latitude = 0 degrees
+- Thermal inertia = 55 (standard regolith at 273 K)
+- H-parameter = 0.06 m (density/conductivity scale depth)
+- Albedo = 0.12 (highland)
+
+Temperature data (one row per time step, one column per depth layer) is written
+to stdout, so redirect it to a file. Two auxiliary files are written to the
+current directory:
+- `loctime.txt` -- local solar time (hours past noon) for each output row
+- `profile_z_dz_rho_k.txt` -- depth grid: z [m], dz [m], density [kg/m³], conductivity [W/m/K]
+
+### More Examples
+
+```bash
+# Apollo 15 site (26°N, mare albedo, Fourier solver)
+./heat1d_moon 26 55 0.06 0.06 3 > apollo15.txt
+
+# High latitude with Crank-Nicolson solver
+./heat1d_moon 60 55 0.06 0.12 1 > lat60.txt
+
+# Low thermal inertia (fluffy regolith)
+./heat1d_moon 0 30 0.06 0.12 > fluffy.txt
+```
+
+## Command-Line Arguments
 
 ```
-$ ./heat1d_moon
+./heat1d_moon [lat] [T.I.] [H] [albedo] [solver] [equil_nperday] [nperday_output] [adaptive_tol] [flux_file]
+```
 
-Usage:
-  heat1d_moon [lat] [T.I.] [H] [albedo]
+The first four arguments are required; the rest are optional.
 
-    [lat] -- latitude in degrees
-    [T.I.] -- thermal inertia at 273 K [SI units] (55 for typical regolith)
-    [H] -- H-parameter = scale height of TI increase (0.07 is typical)
-    [albedo] -- solar bolometric albedo of surface
+| # | Argument | Units | Description | Default / Typical |
+|---|---|---|---|---|
+| 1 | `lat` | degrees | Latitude | -- (required) |
+| 2 | `T.I.` | J m⁻² K⁻¹ s⁻¹/² | Thermal inertia at 273 K | 55 (standard regolith) |
+| 3 | `H` | m | Density/conductivity e-folding scale depth | 0.06 |
+| 4 | `albedo` | -- | Normal bolometric Bond albedo | 0.12 (highland), 0.06 (mare) |
+| 5 | `solver` | -- | 0 = explicit, 1 = Crank-Nicolson, 2 = implicit, 3 = Fourier | 0 |
+| 6 | `equil_nperday` | -- | Time steps per day during equilibration | 480 |
+| 7 | `nperday_output` | -- | Output samples per day | 480 |
+| 8 | `adaptive_tol` | K | Adaptive step-doubling tolerance (0 = off) | 0 |
+| 9 | `flux_file` | -- | Path to external flux file (overrides solar flux) | none |
+
+### Solvers
+
+| Code | Solver | Notes |
+|---|---|---|
+| 0 | **Explicit** (Forward Euler) | CFL-limited, ~830 steps/day. Simple and robust. |
+| 1 | **Crank-Nicolson** | Unconditionally stable, 2nd-order in time. Recommended for time-stepping. |
+| 2 | **Implicit** (Backward Euler) | Unconditionally stable, 1st-order in time. |
+| 3 | **Fourier-matrix** | Frequency-domain solver. Solves periodic steady state directly (~1000x faster). Requires FFTW3. |
+
+## Output Format
+
+**stdout** (redirect to a file):
+
+Each row is one output time step. Each column is one depth layer (column 0 =
+surface). Values are temperature in Kelvin, space-separated:
 
 ```
-In this implementation, both the H-parameter and thermal inertia can be adjusted. Standard values for these are 0.07 [m] and 55 [J.m-2.K-1.s-1/2].
+388.47 385.12 378.93 ... 251.84
+387.21 384.98 378.81 ... 251.84
+...
+```
+
+**loctime.txt**:
+
+One value per line, the local solar time in hours past noon (0 = noon, 6 =
+sunset, 12 = midnight, 18 = sunrise, 24 = noon again):
+
+```
+0.00
+0.05
+0.10
+...
+```
+
+**profile_z_dz_rho_k.txt**:
+
+One row per layer: depth [m], layer thickness [m], density [kg/m³], phonon
+conductivity [W/m/K]:
+
+```
+0.0000 4.256e-04 1100 7.400e-04
+0.0004 5.107e-04 1104 7.432e-04
+...
+```
+
+## Plotting Results
+
+### With Python
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+
+T = np.loadtxt("temperature.txt")
+lt = np.loadtxt("loctime.txt")
+
+plt.plot(lt, T[:, 0])
+plt.xlabel("Local Time (hours past noon)")
+plt.ylabel("Surface Temperature [K]")
+plt.title("Lunar Equatorial Surface Temperature")
+plt.show()
+```
+
+### With gnuplot
+
+```gnuplot
+set xlabel "Local Time (hours past noon)"
+set ylabel "Surface Temperature [K]"
+plot "< paste loctime.txt temperature.txt" using 1:2 with lines title "Surface"
+```
+
+## Physical Parameters
+
+All physical constants are defined in `heat1dfun.h`. Key values for the Moon
+(Table A1 of Hayne et al., 2017):
+
+| Parameter | Symbol | Value | Units |
+|---|---|---|---|
+| Solar constant | S₀ | 1361 | W m⁻² |
+| Stefan-Boltzmann | σ | 5.67 × 10⁻⁸ | W m⁻² K⁻⁴ |
+| IR emissivity | ε | 0.95 | -- |
+| Synodic period | P | 2.55024 × 10⁶ | s |
+| Surface density | ρₛ | 1100 | kg m⁻³ |
+| Deep density | ρ_d | 1800 | kg m⁻³ |
+| Surface conductivity | Kₛ | 7.4 × 10⁻⁴ | W m⁻¹ K⁻¹ |
+| Deep conductivity | K_d | 3.4 × 10⁻³ | W m⁻¹ K⁻¹ |
+| Radiative parameter | χ | 2.7 | -- |
+| Geothermal heat flux | Q | 0.018 | W m⁻² |
+
+## Source Files
+
+| File | Description |
+|---|---|
+| `heat1d_moon.c` | Main program: argument parsing, grid setup, simulation driver |
+| `heat1dfun.c` | Core solver: time-stepping, boundary conditions, material properties |
+| `heat1dfun.h` | Constants, structures (`layerT`, `profileT`), function prototypes |
+| `orbitfun.c` | Orbital mechanics: solar zenith angle, hour angle, orbit update |
+| `orbitfun.h` | Orbital function prototypes |
+| `fourier_solver.c` | Frequency-domain Fourier-matrix solver (requires FFTW3) |
+| `fourier_solver.h` | Fourier solver structures and prototypes |
+| `test_validate.c` | Validation tests against Hayne et al. (2017) Table A2 |
+| `Makefile` | Build system (auto-detects macOS/Linux) |
+
+## Reference
+
+Hayne, P. O., et al. (2017). Global regolith thermophysical properties of the
+Moon from the Diviner Lunar Radiometer Experiment. *Journal of Geophysical
+Research: Planets*, 122, 2371-2400.
+[doi:10.1002/2017JE005387](https://doi.org/10.1002/2017JE005387)
