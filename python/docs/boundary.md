@@ -52,7 +52,7 @@ $$
 T_s^{(k+1)} = T_s^{(k)} - \frac{f(T_s^{(k)})}{f'(T_s^{(k)})}
 $$
 
-converges when $\lvert\Delta T\rvert < \epsilon$ (default: 0.1 K). A maximum
+converges when |ΔT| < ε (default: 0.1 K). A maximum
 iteration count (default: 100) prevents infinite loops.
 
 The surface temperature gradient is approximated using a second-order forward

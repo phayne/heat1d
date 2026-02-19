@@ -77,7 +77,7 @@ total computation time. The solver choice has a large impact:
 The Fourier-matrix solver achieves ~1000× speedup over explicit time-stepping
 because it computes the periodic steady state directly without iterating through
 individual diurnal cycles. For time-stepping equilibration, the implicit and
-Crank-Nicolson schemes achieve $\sim 35\times$ speedup because they are not
+Crank-Nicolson schemes achieve ~35× speedup because they are not
 constrained by the CFL stability limit.
 
 ## Configuration

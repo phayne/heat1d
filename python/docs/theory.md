@@ -41,7 +41,7 @@ $$
 $$
 
 where $H$ is the *H-parameter*, the e-folding scale depth. For the Moon,
-$\rho_s = 1100$ kg m⁻³, $\rho_d = 1800$ kg m⁻³, and $H \approx 0.06$ m.
+$\rho_s$ = 1100 kg m⁻³, $\rho_d$ = 1800 kg m⁻³, and H ≈ 0.06 m.
 
 ### Thermal Conductivity
 
@@ -58,8 +58,8 @@ $$
 K_c(z) = K_d - (K_d - K_s) \frac{\rho_d - \rho(z)}{\rho_d - \rho_s} \qquad \text{(A5)}
 $$
 
-For the Moon, $K_s = 7.4 \times 10^{-4}$ W m⁻¹ K⁻¹,
-$K_d = 3.4 \times 10^{-3}$ W m⁻¹ K⁻¹, and $\chi = 2.7$.
+For the Moon, $K_s$ = 7.4 × 10⁻⁴ W m⁻¹ K⁻¹,
+$K_d$ = 3.4 × 10⁻³ W m⁻¹ K⁻¹, and χ = 2.7.
 
 The temperature dependence has an important physical consequence: because
 conductivity is higher when the near-surface is hot (daytime), more heat flows
@@ -85,7 +85,7 @@ The thermal inertia $I = \sqrt{K \rho c_p}$ controls the amplitude of diurnal
 temperature variations. Low $I$ (loose, porous regolith) produces large
 day-night temperature contrasts; high $I$ (compacted soil or rock) produces
 small contrasts. Typical lunar regolith has
-$I \approx 55\ \mathrm{J\,m^{-2}\,K^{-1}\,s^{-1/2}}$ at 273 K.
+I ≈ 55 J m⁻² K⁻¹ s⁻¹/² at 273 K.
 
 ## Surface Boundary Condition
 
@@ -175,7 +175,7 @@ $$
 
 where $B_0$ is the radiative conductivity prefactor at the surface. The
 iteration $T_s^{(k+1)}$ = $T_s^{(k)} - f/f'$ converges when
-$|\Delta T| < \epsilon$ (default: 0.1 K), typically in 2--5 iterations.
+|ΔT| < ε (default: 0.1 K), typically in 2--5 iterations.
 
 ## Bottom Boundary Condition
 
@@ -196,9 +196,9 @@ to a temperature gradient of a few K m⁻¹ at depth. This is a small but
 non-negligible correction: the heat flux maintains a weak upward temperature
 gradient that slightly elevates subsurface temperatures.
 
-The bottom boundary is placed at a depth of $\sim 20$ thermal skin depths below
-the surface ($\sim 1$ m for the Moon). At this depth, diurnal temperature
-variations are attenuated by a factor of $e^{-20} \approx 2 \times 10^{-9}$,
+The bottom boundary is placed at a depth of ~20 thermal skin depths below
+the surface (~1 m for the Moon). At this depth, diurnal temperature
+variations are attenuated by a factor of e⁻²⁰ ≈ 2 × 10⁻⁹,
 so the fixed-flux condition does not influence the diurnal surface temperature.
 See [Spatial Grid](grid.md) for details on grid construction.
 
@@ -272,20 +272,20 @@ and [Initialization](initialization.md) for details.
 
 | Parameter | Symbol | Value | Units | Source |
 |---|---|---|---|---|
-| Solar constant | $S_0$ | 1361 | W m⁻² | Kopp and Lean (2011) |
-| Stefan-Boltzmann | $\sigma$ | $5.67 \times 10^{-8}$ | W m⁻² K⁻⁴ | |
-| IR emissivity | $\varepsilon$ | 0.95 | -- | Logan et al. (1972) |
-| Synodic period | $P$ | $2.55 \times 10^{6}$ | s | |
-| Surface density | $\rho_s$ | 1100 | kg m⁻³ | Hayne et al. (2013) |
-| Deep density | $\rho_d$ | 1800 | kg m⁻³ | Carrier et al. (1991) |
-| Surface conductivity | $K_s$ | $7.4 \times 10^{-4}$ | W m⁻¹ K⁻¹ | Hayne et al. (2017) |
-| Deep conductivity | $K_d$ | $3.4 \times 10^{-3}$ | W m⁻¹ K⁻¹ | Hayne et al. (2017) |
-| Radiative parameter | $\chi$ | 2.7 | -- | Vasavada et al. (2012) |
-| H-parameter | $H$ | 0.06 | m | Hayne et al. (2017) |
-| Normal albedo (highland) | $A_0$ | 0.12 | -- | Vasavada et al. (2012) |
-| Albedo coefficient | $a$ | 0.06 | -- | Hayne et al. (2017) |
-| Albedo coefficient | $b$ | 0.25 | -- | Hayne et al. (2017) |
-| Geothermal heat flux | $Q_b$ | 0.018 | W m⁻² | Langseth et al. (1976) |
+| Solar constant | S₀ | 1361 | W m⁻² | Kopp and Lean (2011) |
+| Stefan-Boltzmann | σ | 5.67 × 10⁻⁸ | W m⁻² K⁻⁴ | |
+| IR emissivity | ε | 0.95 | -- | Logan et al. (1972) |
+| Synodic period | P | 2.55 × 10⁶ | s | |
+| Surface density | ρ_s | 1100 | kg m⁻³ | Hayne et al. (2013) |
+| Deep density | ρ_d | 1800 | kg m⁻³ | Carrier et al. (1991) |
+| Surface conductivity | K_s | 7.4 × 10⁻⁴ | W m⁻¹ K⁻¹ | Hayne et al. (2017) |
+| Deep conductivity | K_d | 3.4 × 10⁻³ | W m⁻¹ K⁻¹ | Hayne et al. (2017) |
+| Radiative parameter | χ | 2.7 | -- | Vasavada et al. (2012) |
+| H-parameter | H | 0.06 | m | Hayne et al. (2017) |
+| Normal albedo (highland) | A₀ | 0.12 | -- | Vasavada et al. (2012) |
+| Albedo coefficient | a | 0.06 | -- | Hayne et al. (2017) |
+| Albedo coefficient | b | 0.25 | -- | Hayne et al. (2017) |
+| Geothermal heat flux | Q_b | 0.018 | W m⁻² | Langseth et al. (1976) |
 
 ## Reference
 

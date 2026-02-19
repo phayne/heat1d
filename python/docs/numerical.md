@@ -49,9 +49,8 @@ $$
 \Delta t \leq F \cdot \min_i \frac{\rho_i c_{p,i} \Delta z_i^2}{K_i}
 $$
 
-where $F \leq 0.5$ is the Fourier mesh number. For typical Moon parameters,
-this limits the time step to $\sim 3000$ s ($\sim 830$ steps per
-lunar day).
+where F ≤ 0.5 is the Fourier mesh number. For typical Moon parameters,
+this limits the time step to ~3000 s (~830 steps per lunar day).
 
 ## Implicit Scheme (Backward Euler)
 
@@ -74,10 +73,10 @@ This forms a tridiagonal system that is solved using the Thomas algorithm
 
 **Stability**: The implicit scheme is *unconditionally stable*, meaning the time
 step is limited by accuracy rather than stability. This allows much larger time
-steps (e.g., $\sim 24$ steps per lunar day), providing a $\sim 35\times$
-speedup over the explicit scheme.
+steps (e.g., ~24 steps per lunar day), providing a ~35× speedup over the
+explicit scheme.
 
-**Accuracy**: First-order in time ($O(\Delta t)$), same as explicit.
+**Accuracy**: First-order in time (O(Δt)), same as explicit.
 
 ## Crank-Nicolson Scheme (Semi-Implicit)
 
@@ -96,8 +95,8 @@ right-hand side uses the old temperature values.
 
 **Stability**: Unconditionally stable, like the fully implicit scheme.
 
-**Accuracy**: Second-order in time ($O(\Delta t^2)$), the most accurate
-of the three schemes for a given time step.
+**Accuracy**: Second-order in time (O(Δt²)), the most accurate of the
+three schemes for a given time step.
 
 **Boundary values**: The Crank-Nicolson scheme requires both old and new
 boundary values. The old values (before the BC update) contribute to the explicit
@@ -115,7 +114,7 @@ $$
 where $\mathbf{A}$ is tridiagonal with sub-diagonal $\ell$, main
 diagonal $m$, and super-diagonal $u$.
 
-The Thomas algorithm (Tri-Diagonal Matrix Algorithm) solves this in $O(n)$
+The Thomas algorithm (Tri-Diagonal Matrix Algorithm) solves this in O(n)
 time using forward elimination and back-substitution:
 
 **Forward sweep**:
@@ -245,7 +244,7 @@ iterations.
 ### Thermal Pumping (Rectification)
 
 The nonlinear temperature dependence of thermal conductivity
-($K \propto 1 + \chi T^3/350^3$) produces a net downward heat transport known
+(K ∝ 1 + χT³/350³) produces a net downward heat transport known
 as *thermal pumping* or the *solid-state greenhouse effect*. Because conductivity
 is higher when the near-surface is hot (daytime), more heat flows downward during
 the day than upward at night. This elevates subsurface temperatures above what
@@ -285,7 +284,7 @@ diurnal cycle because:
 
 - No equilibration orbits are required (the solution is already periodic)
 - All frequencies are solved simultaneously via matrix operations
-- The Newton iteration converges in $O(10)$ iterations rather than $O(10^3)$ time steps
+- The Newton iteration converges in O(10) iterations rather than O(10³) time steps
 - A complete lunar diurnal cycle is solved in ~100 ms
 
 ### Limitations
@@ -299,15 +298,15 @@ diurnal cycle because:
 
 | Scheme | Method | Accuracy | Stability | Steps/lunar day | Relative Speed |
 |---|---|---|---|---|---|
-| Explicit | Forward Euler | $O(\Delta t)$ | Conditional | ~830 | 1× |
-| Implicit | Backward Euler + TDMA | $O(\Delta t)$ | Unconditional | ~24 | ~35× |
-| Crank-Nicolson | Semi-implicit + TDMA | $O(\Delta t^2)$ | Unconditional | ~24 | ~35× |
-| Fourier-matrix | Frequency domain | Spectral$^*$ | N/A (periodic) | N/A | ~1000× |
+| Explicit | Forward Euler | O(Δt) | Conditional | ~830 | 1× |
+| Implicit | Backward Euler + TDMA | O(Δt) | Unconditional | ~24 | ~35× |
+| Crank-Nicolson | Semi-implicit + TDMA | O(Δt²) | Unconditional | ~24 | ~35× |
+| Fourier-matrix | Frequency domain | Spectral\* | N/A (periodic) | N/A | ~1000× |
 
-$^*$Fourier-matrix accuracy is controlled by the number of harmonics $N$, not by a
-time-step size. Truncation errors decay exponentially with $N$ for smooth forcing
-(spectral convergence). In practice, $N \sim 100$--$500$ harmonics suffice for
-sub-mK accuracy on the lunar diurnal cycle.
+\*Fourier-matrix accuracy is controlled by the number of harmonics N, not by a
+time-step size. Truncation errors decay exponentially with N for smooth forcing
+(spectral convergence). In practice, N ~ 100–500 harmonics suffice for sub-mK
+accuracy on the lunar diurnal cycle.
 
 For time-stepping applications, the Crank-Nicolson scheme is recommended: it
 offers second-order accuracy with the same unconditional stability as the fully
