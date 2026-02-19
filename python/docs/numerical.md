@@ -85,10 +85,10 @@ The Crank-Nicolson scheme averages the explicit and implicit contributions,
 achieving second-order accuracy in time:
 
 $$
--\frac{a_i}{2} T_{i-1}^{n+1} + \left(1 + \frac{a_i + b_i}{2}\right) T_i^{n+1}
-- \frac{b_i}{2} T_{i+1}^{n+1} =
-\frac{a_i}{2} T_{i-1}^n + \left(1 - \frac{a_i + b_i}{2}\right) T_i^n
-+ \frac{b_i}{2} T_{i+1}^n
+-\frac{a_i}{2} T_{i-1}^{n+1} + \left(1 + \frac{a_i + b_i}{2}\right) T_i^{n+1} -
+\frac{b_i}{2} T_{i+1}^{n+1} =
+\frac{a_i}{2} T_{i-1}^n + \left(1 - \frac{a_i + b_i}{2}\right) T_i^n +
+\frac{b_i}{2} T_{i+1}^n
 $$
 
 The left-hand side forms a tridiagonal system with half-coefficients, while the
