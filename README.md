@@ -23,7 +23,7 @@
 - **PSR crater modeling**: bowl-shaped permanently shadowed regions ([Ingersoll & Svitek, 1992](docs/Ingersoll-Svitek_bowl-shaped-craters-frost_Icarus_1992.pdf))
 - **YAML configuration** system shared between Python and C implementations
 - **Validation suite** against Apollo heat flow data and Diviner radiometer observations
-- **C implementation** for performance-critical applications (same YAML config, all solvers, 24 validation tests)
+- **C implementation** for the highest computational performance (same YAML config, all solvers, 24 validation tests)
 
 ## Quick Start
 
@@ -144,7 +144,7 @@ Install with `pip install "heat1d[gui]"` and launch with `heat1d-gui`.
 ## C Implementation
 
 The `c/` directory contains a standalone C implementation optimized for batch
-runs and performance-critical workflows. It supports all four solvers and reads
+runs and high performance. It supports all four solvers and reads
 the **same YAML configuration files** as the Python version.
 
 ### Building
