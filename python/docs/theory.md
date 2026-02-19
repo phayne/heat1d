@@ -10,7 +10,7 @@ The 1-D heat equation governs the evolution of temperature $T$ as a function
 of depth $z$ and time $t$:
 
 $$
-\rho \, c_p \frac{\partial T}{\partial t} = \frac{\partial}{\partial z} \left( K \frac{\partial T}{\partial z} \right) \qquad \text{(A1)}
+\rho c_p \frac{\partial T}{\partial t} = \frac{\partial}{\partial z} \left( K \frac{\partial T}{\partial z} \right) \qquad \text{(A1)}
 $$
 
 where $\rho(z)$ is the bulk density, $c_p(T)$ is the specific heat capacity,
@@ -19,7 +19,7 @@ and $c_p$ and $K$ also depend on temperature, making the equation nonlinear.
 
 The left-hand side is the rate of thermal energy storage per unit volume. The
 right-hand side is the divergence of the conductive heat flux
-$q = -K \, \partial T / \partial z$. The model propagates surface temperature
+$q = -K \partial T / \partial z$. The model propagates surface temperature
 variations downward, with the depth of penetration controlled by the *thermal
 skin depth* $z_s = \sqrt{\kappa P / \pi}$, where $\kappa = K / (\rho c_p)$ is
 the thermal diffusivity and $P$ is the forcing period
@@ -37,7 +37,7 @@ Bulk density increases exponentially from a surface value $\rho_s$ to a
 deep value $\rho_d$ (Eq. A2):
 
 $$
-\rho(z) = \rho_d - (\rho_d - \rho_s) \, e^{-z/H} \qquad \text{(A2)}
+\rho(z) = \rho_d - (\rho_d - \rho_s) e^{-z/H} \qquad \text{(A2)}
 $$
 
 where $H$ is the *H-parameter*, the e-folding scale depth. For the Moon,
@@ -94,7 +94,7 @@ absorbed solar radiation, thermal emission, and conduction into the subsurface
 (Eq. A7):
 
 $$
-\varepsilon \, \sigma \, T_s^4 = Q_s + K \left. \frac{\partial T}{\partial z} \right|_{z=0} \qquad \text{(A7)}
+\varepsilon \sigma T_s^4 = Q_s + K \left. \frac{\partial T}{\partial z} \right|_{z=0} \qquad \text{(A7)}
 $$
 
 where $\varepsilon$ is the infrared emissivity ($0.95$ for the Moon), $\sigma$
@@ -163,7 +163,7 @@ $T^3$-dependent conductivity), it is solved iteratively using Newton's method
 The function whose root is sought is:
 
 $$
-f(T_s) = \varepsilon \, \sigma \, T_s^4 - Q_s - K_0 \frac{-3T_0 + 4T_1 - T_2}{2 \Delta z_0} \qquad \text{(A25)}
+f(T_s) = \varepsilon \sigma T_s^4 - Q_s - K_0 \frac{-3T_0 + 4T_1 - T_2}{2 \Delta z_0} \qquad \text{(A25)}
 $$
 
 where the surface temperature gradient uses a second-order forward difference
@@ -247,7 +247,7 @@ analytic estimates (Eqs. A34--A36).
 **Surface**: radiative equilibrium at local noon:
 
 $$
-T_0 = \left(\frac{(1 - A) \, F_\odot}{\varepsilon \, \sigma}\right)^{1/4} \qquad \text{(A34)}
+T_0 = \left(\frac{(1 - A) F_\odot}{\varepsilon \sigma}\right)^{1/4} \qquad \text{(A34)}
 $$
 
 **Bottom**: isothermal body equilibrium:
@@ -259,7 +259,7 @@ $$
 **Subsurface**: exponential interpolation:
 
 $$
-T_i = T_N - (T_N - T_0) \, e^{-z_i/H} \qquad \text{(A36)}
+T_i = T_N - (T_N - T_0) e^{-z_i/H} \qquad \text{(A36)}
 $$
 
 This gives a plausible starting profile. The model then equilibrates to the

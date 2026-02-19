@@ -41,7 +41,7 @@ At elevated temperatures, radiative heat transfer between grains enhances the
 effective thermal conductivity. The total conductivity is:
 
 $$
-K = K_c (1 + \chi \, T^3 / 350^3)
+K = K_c (1 + \chi T^3 / 350^3)
 $$
 
 where $\chi$ is a dimensionless parameter controlling the strength of

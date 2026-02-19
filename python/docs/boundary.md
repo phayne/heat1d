@@ -34,8 +34,8 @@ The albedo model follows Keihm (1984) and Vasavada et al. (2012), as used in
 Hayne et al. (2017), Eq. A8:
 
 $$
-A(\theta) = A_0 + a \left(\frac{\theta}{\pi/4}\right)^3
-+ b \left(\frac{\theta}{\pi/2}\right)^8
+A(\theta) = A_0 + a \left(\frac{\theta}{\pi/4}\right)^3 +
+b \left(\frac{\theta}{\pi/2}\right)^8
 $$
 
 where $A_0$ is the normal bolometric Bond albedo (0.12 for highland,
@@ -100,8 +100,8 @@ $$
 \beta = \arccos(1 - 2f)
 $$
 
-Typical simple lunar craters have $d/D \approx 0.1$--$0.2$, giving
-$f \approx 0.04$--$0.14$ and $\beta \approx 23$°--$44$°.
+Typical simple lunar craters have d/D ≈ 0.1–0.2, giving
+f ≈ 0.04–0.14 and β ≈ 23°–44°.
 
 ### PSR Viability Condition
 
@@ -126,7 +126,7 @@ $$
 \left(\frac{d}{D}\right)_{\min} = \frac{1}{2} \sqrt{\frac{1 - \cos e_{0,\max}}{1 + \cos e_{0,\max}}}
 $$
 
-For the Moon ($\epsilon \approx 1.54$°):
+For the Moon (ε ≈ 1.54°):
 
 | Latitude | $e_{0,\max}$ | Min $d/D$ | Min $\beta$ |
 |----------|---------------|-----------|-------------|
@@ -136,7 +136,7 @@ For the Moon ($\epsilon \approx 1.54$°):
 | 70° | 21.5° | 0.097 | 21.5° |
 
 At lower latitudes the required crater depth increases rapidly, and below
-~70° latitude even the deepest simple craters ($d/D \approx 0.2$) cannot
+~70° latitude even the deepest simple craters (d/D ≈ 0.2) cannot
 sustain a PSR on the Moon.
 
 If PSR mode is enabled at a latitude where the viability condition is not met,
@@ -163,7 +163,7 @@ In the surface energy balance, $\varepsilon_{\text{eff}}$ replaces
 $\varepsilon$ on the left-hand side:
 
 $$
-\varepsilon_{\text{eff}} \, \sigma \, T_s^4 = Q_{\text{psr}} + K \left. \frac{\partial T}{\partial z} \right|_{z=0}
+\varepsilon_{\text{eff}} \sigma T_s^4 = Q_{\text{psr}} + K \left. \frac{\partial T}{\partial z} \right|_{z=0}
 $$
 
 ### Absorbed Flux at the Crater Floor
@@ -175,7 +175,7 @@ $$
 Q_{\text{psr}} = \frac{S_0}{r^2} \sin e_0 \cdot \frac{f (1 - A)}{1 - A f} \left[\varepsilon + A (1 - f)\right]
 $$
 
-where $e_0$ is the solar elevation angle (clamped to $\geq 0$), $A$ is the
+where $e_0$ is the solar elevation angle (clamped to ≥ 0), $A$ is the
 Bond albedo, and $\varepsilon$ is the flat-surface emissivity.
 
 The three factors have clear physical meanings:
@@ -198,7 +198,7 @@ $$
 $$
 
 This uses the same orbital mechanics as the flat-surface model (see
-[Theory](theory.md)). The PSR model clamps $\sin e_0 \geq 0$ so that negative
+[Theory](theory.md)). The PSR model clamps sin e₀ ≥ 0 so that negative
 values (Sun below the horizon) produce zero flux rather than unphysical
 negative flux.
 

@@ -64,8 +64,8 @@ $$
 where:
 
 $$
-a_i = \frac{\Delta t \, p_i K_{i-1}}{\rho_i c_{p,i}}, \quad
-b_i = \frac{\Delta t \, q_i K_i}{\rho_i c_{p,i}}
+a_i = \frac{\Delta t \cdot p_i K_{i-1}}{\rho_i c_{p,i}}, \quad
+b_i = \frac{\Delta t \cdot q_i K_i}{\rho_i c_{p,i}}
 $$
 
 This forms a tridiagonal system that is solved using the Thomas algorithm
@@ -156,7 +156,7 @@ For a periodic surface forcing with period $P$, the temperature at any depth
 can be decomposed into Fourier harmonics:
 
 $$
-T(z, t) = \bar{T}(z) + \sum_{n=1}^{N/2} \left[ \hat{T}_n(z) \, e^{i n \omega_0 t} + \hat{T}_n^*(z) \, e^{-i n \omega_0 t} \right]
+T(z, t) = \bar{T}(z) + \sum_{n=1}^{N/2} \left[ \hat{T}_n(z) e^{i n \omega_0 t} + \hat{T}_n^*(z) e^{-i n \omega_0 t} \right]
 $$
 
 where $\omega_0 = 2\pi / P$ is the fundamental angular frequency,
@@ -221,7 +221,7 @@ Sangiovanni-Vincentelli, 1986) adapted from nonlinear circuit analysis. The cond
 frequency-domain admittance (inverse impedance) as a circulant matrix $\mathbf{C}$:
 
 $$
-\mathbf{q}_{\text{cond}} = \mathbf{C} \, \mathbf{T}_s
+\mathbf{q}_{\text{cond}} = \mathbf{C} \mathbf{T}_s
 $$
 
 where $\mathbf{C}$ is constructed from the inverse FFT of the admittance
@@ -254,7 +254,7 @@ The solver captures this through an outer iteration loop:
 
 1. **Freeze properties** at the current equilibrium profile $\bar{T}(z)$
 2. **Solve** the linearized frequency-domain problem (inner Newton loop)
-3. **Compute rectification flux** $J_{\text{pump}}(z) = \langle K(T) \, \partial \tilde{T}/\partial z \rangle$ from the time-domain reconstruction of $T(z,t)$ and the exact nonlinear $K(T)$, where $\tilde{T}(z,t) = T(z,t) - \bar{T}(z)$ is the AC (oscillatory) component and $\langle \cdot \rangle$ denotes the time average over one period
+3. **Compute rectification flux** $J_{\text{pump}}(z) = \langle K(T) \partial \tilde{T}/\partial z \rangle$ from the time-domain reconstruction of $T(z,t)$ and the exact nonlinear $K(T)$, where $\tilde{T}(z,t) = T(z,t) - \bar{T}(z)$ is the AC (oscillatory) component and $\langle \cdot \rangle$ denotes the time average over one period
 4. **Update the equilibrium profile** by integrating
 
    $$
