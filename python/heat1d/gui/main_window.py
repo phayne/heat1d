@@ -115,6 +115,10 @@ class MainWindow(QMainWindow):
         self.run_manager.run_selected.connect(self.plot_panel.show_single_run)
         self.run_manager.compare_requested.connect(self.plot_panel.show_comparison)
 
+        # Plot panel YAML buttons → main window save/load
+        self.plot_panel.save_yaml_btn.clicked.connect(self._save_yaml)
+        self.plot_panel.load_yaml_btn.clicked.connect(self._load_yaml)
+
     # ---- Run simulation ----
 
     def _start_run(self):

@@ -6,7 +6,10 @@ import pytest
 
 from heat1d.horizons import (
     HorizonsError,
+    _detect_west_positive,
+    _east_to_horizons_lon,
     _parse_horizons_response,
+    _west_positive_cache,
     compute_step_size,
     get_body_id,
     horizons_to_flux,
@@ -495,3 +498,123 @@ class TestEclipseIntegration:
         einfo = meta["eclipse_info"]
         assert einfo["n_eclipses"] == 0
         assert einfo["max_fraction"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# West-positive longitude convention tests
+# ---------------------------------------------------------------------------
+
+# Canned header fragments mimicking real Horizons output
+_HEADER_WEST_LON = """\
+*******************************************************************************
+Target body name: Sun (10)                        {source: DE441}
+Center body name: Europa (502)                    {source: jup365}
+Center geodetic : 315.000000, 0.000000, 0.0000 {W-lon(deg),Lat(deg),Alt(km)}
+*******************************************************************************
+$$SOE
+ 2024-Jun-15 00:00,*,i,  88.497638,     9.077305,  5.20000000000000,
+$$EOE
+*******************************************************************************
+"""
+
+_HEADER_EAST_LON = """\
+*******************************************************************************
+Target body name: Sun (10)                        {source: DE441}
+Center body name: Moon (301)                      {source: DE441}
+Center geodetic : 45.000000, 0.000000, 0.0000 {E-lon(deg),Lat(deg),Alt(km)}
+*******************************************************************************
+$$SOE
+ 2024-Jun-15 00:00,*,i,  88.497638,     9.077305,  1.01614798699260,
+$$EOE
+*******************************************************************************
+"""
+
+_HEADER_NO_CONVENTION = """\
+*******************************************************************************
+$$SOE
+ 2024-Jun-15 00:00,*,i,  88.497638,     9.077305,  1.01614798699260,
+$$EOE
+*******************************************************************************
+"""
+
+
+class TestWestPositiveLongitude:
+    """Tests for west-positive longitude auto-detection and conversion."""
+
+    @pytest.fixture(autouse=True)
+    def clear_cache(self):
+        """Clear the convention cache before each test."""
+        _west_positive_cache.clear()
+        yield
+        _west_positive_cache.clear()
+
+    def test_detect_west_positive_true(self):
+        """Header with {W-lon(...)} is detected as west-positive."""
+        assert _detect_west_positive(_HEADER_WEST_LON) is True
+
+    def test_detect_west_positive_false(self):
+        """Header with {E-lon(...)} is not west-positive."""
+        assert _detect_west_positive(_HEADER_EAST_LON) is False
+
+    def test_detect_west_positive_missing(self):
+        """Header without convention marker defaults to False."""
+        assert _detect_west_positive(_HEADER_NO_CONVENTION) is False
+
+    def test_east_to_horizons_lon_cached_west(self):
+        """Longitude is negated for a body cached as west-positive."""
+        _west_positive_cache["502"] = True
+        assert _east_to_horizons_lon(45.0, "502") == -45.0
+
+    def test_east_to_horizons_lon_cached_east(self):
+        """Longitude is unchanged for a body cached as east-positive."""
+        _west_positive_cache["301"] = False
+        assert _east_to_horizons_lon(45.0, "301") == 45.0
+
+    def test_east_to_horizons_lon_uncached(self):
+        """Longitude is unchanged for an uncached body."""
+        assert _east_to_horizons_lon(45.0, "301") == 45.0
+
+    def test_zero_longitude_unaffected(self):
+        """Zero longitude is unchanged regardless of convention."""
+        _west_positive_cache["502"] = True
+        assert _east_to_horizons_lon(0.0, "502") == 0.0
+
+    def test_negative_input_for_west_positive_body(self):
+        """Negative east longitude (= west) becomes positive for W-lon body."""
+        _west_positive_cache["502"] = True
+        assert _east_to_horizons_lon(-30.0, "502") == 30.0
+
+
+@pytest.mark.slow
+class TestWestPositiveIntegration:
+    """Integration tests for west-positive longitude detection (network)."""
+
+    @pytest.fixture(autouse=True)
+    def clear_cache(self):
+        _west_positive_cache.clear()
+        yield
+        _west_positive_cache.clear()
+
+    def test_europa_west_positive_detected(self):
+        """Europa (502) is detected as west-positive from Horizons."""
+        from heat1d.horizons import query_horizons
+
+        query_horizons(
+            body_id="502", lon_deg=45.0, lat_deg=0.0,
+            start_time="2024-01-01 00:00",
+            stop_time="2024-01-01 06:00",
+            step_size="6h",
+        )
+        assert _west_positive_cache.get("502") is True
+
+    def test_moon_east_positive_detected(self):
+        """Moon (301) is detected as east-positive from Horizons."""
+        from heat1d.horizons import query_horizons
+
+        query_horizons(
+            body_id="301", lon_deg=45.0, lat_deg=0.0,
+            start_time="2024-01-01 00:00",
+            stop_time="2024-01-01 06:00",
+            step_size="6h",
+        )
+        assert _west_positive_cache.get("301") is False

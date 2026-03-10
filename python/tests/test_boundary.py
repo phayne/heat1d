@@ -4,8 +4,9 @@ import numpy as np
 import planets
 import pytest
 
-from heat1d.boundary import botTemp, surfTemp
+from heat1d.boundary import botTemp, surfTemp, _volterra_predictor_python
 from heat1d.config import Configurator
+from heat1d.model import Model
 from heat1d.profile import Profile
 
 
@@ -66,3 +67,54 @@ class TestBotTemp:
         p = equator_profile
         botTemp(p, 0.0)
         np.testing.assert_allclose(p.T[-1], p.T[-2], rtol=1e-10)
+
+
+DAY = planets.Moon.day
+
+
+class TestVolterraPredictor:
+    """Tests for the Volterra integral predictor (Schorghofer & Khatiwala 2024)."""
+
+    def test_predictor_returns_physical_temperature(self):
+        """Volterra predictor returns a positive, finite temperature."""
+        T_pred = _volterra_predictor_python(
+            T0=200.0, T1=190.0, T2=185.0,
+            Qs_prev=0.0, Qs_new=1000.0, dt=DAY / 48,
+            kc0=7.4e-4, R350=2.7 / 350**3, rho0=1100.0, cp0=600.0,
+            emissivity=0.95, sigma=5.67e-8, dz0=0.004,
+        )
+        assert np.isfinite(T_pred)
+        assert T_pred > 2.0
+
+    def test_predictor_responds_to_flux_increase(self):
+        """Predictor gives higher T when flux increases."""
+        kwargs = dict(
+            T0=200.0, T1=190.0, T2=185.0, dt=DAY / 48,
+            kc0=7.4e-4, R350=2.7 / 350**3, rho0=1100.0, cp0=600.0,
+            emissivity=0.95, sigma=5.67e-8, dz0=0.004,
+        )
+        T_low = _volterra_predictor_python(Qs_prev=0.0, Qs_new=500.0, **kwargs)
+        T_high = _volterra_predictor_python(Qs_prev=0.0, Qs_new=1200.0, **kwargs)
+        assert T_high > T_low
+
+    def test_full_run_same_result(self):
+        """Volterra predictor doesn't change final result (just initial guess)."""
+        config_std = Configurator(solver="implicit", adaptive_tol=1.0,
+                                  output_interval=DAY / 48)
+        config_vol = Configurator(solver="implicit", adaptive_tol=1.0,
+                                  output_interval=DAY / 48,
+                                  use_volterra_predictor=True)
+        m_std = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config_std)
+        m_vol = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config_vol)
+        m_std.run()
+        m_vol.run()
+        # Results should be very close (predictor only changes Newton's initial guess)
+        np.testing.assert_allclose(m_std.T, m_vol.T, atol=0.5)
+
+    def test_volterra_with_explicit_solver(self):
+        """Volterra predictor works with explicit solver too."""
+        config = Configurator(solver="explicit", use_volterra_predictor=True)
+        m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
+        m.run()
+        assert np.all(np.isfinite(m.T))
+        assert m.T[:, 0].max() > 370

@@ -28,6 +28,9 @@ from .properties import albedoVar
 
 HORIZONS_API_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
 
+#: Cache of detected longitude conventions: body_id -> True if west-positive.
+_west_positive_cache: dict[str, bool] = {}
+
 #: Map from ``planets`` package names to Horizons body IDs.
 HORIZONS_BODY_IDS = {
     "Moon": "301",
@@ -129,6 +132,49 @@ def compute_step_size(output_interval_s=None, planet_day_s=None,
 
 
 # ---------------------------------------------------------------------------
+# Longitude convention helpers
+# ---------------------------------------------------------------------------
+
+def _detect_west_positive(response_text):
+    """Detect whether a Horizons response uses west-positive longitude.
+
+    Scans the header (before ``$$SOE``) for the coordinate label
+    ``{W-lon`` which Horizons emits for west-positive bodies.
+
+    Returns
+    -------
+    bool
+        ``True`` if west-positive longitude detected.
+    """
+    # Only look at lines before $$SOE (the header)
+    header = response_text.split("$$SOE")[0] if "$$SOE" in response_text else response_text
+    return "W-lon" in header or "w-lon" in header
+
+
+def _east_to_horizons_lon(lon_deg, body_id):
+    """Convert east-positive longitude to Horizons convention if needed.
+
+    Uses the cached convention for *body_id*.  If the body is known
+    to use west-positive longitude, negates the value.
+
+    Parameters
+    ----------
+    lon_deg : float
+        East longitude [degrees].
+    body_id : str
+        Horizons body ID.
+
+    Returns
+    -------
+    float
+        Longitude in whatever convention Horizons expects for this body.
+    """
+    if _west_positive_cache.get(body_id, False):
+        return -lon_deg
+    return lon_deg
+
+
+# ---------------------------------------------------------------------------
 # Horizons API query
 # ---------------------------------------------------------------------------
 
@@ -142,7 +188,8 @@ def query_horizons(body_id, lon_deg, lat_deg, start_time, stop_time,
     body_id : str
         Horizons body ID for the observer body (e.g. ``"301"`` for Moon).
     lon_deg : float
-        East longitude [degrees].
+        East longitude [degrees].  Automatically converted for bodies
+        that use west-positive longitude in Horizons.
     lat_deg : float
         Latitude [degrees].
     start_time : str
@@ -171,6 +218,32 @@ def query_horizons(body_id, lon_deg, lat_deg, start_time, stop_time,
     HorizonsError
         If the API returns an error or the response cannot be parsed.
     """
+    # Use cached convention if available; otherwise send as-is and detect.
+    horizons_lon = _east_to_horizons_lon(lon_deg, body_id)
+
+    result_text = _horizons_request(
+        body_id, horizons_lon, lat_deg, start_time, stop_time,
+        step_size, timeout, quantities, command,
+    )
+
+    # Detect longitude convention from the response header and cache it.
+    if body_id not in _west_positive_cache:
+        is_west = _detect_west_positive(result_text)
+        _west_positive_cache[body_id] = is_west
+        if is_west:
+            # First query used wrong sign — re-query with negated longitude.
+            horizons_lon = -lon_deg
+            result_text = _horizons_request(
+                body_id, horizons_lon, lat_deg, start_time, stop_time,
+                step_size, timeout, quantities, command,
+            )
+
+    return _parse_horizons_response(result_text, quantities=quantities)
+
+
+def _horizons_request(body_id, lon_deg, lat_deg, start_time, stop_time,
+                      step_size, timeout, quantities, command):
+    """Make a raw Horizons API request and return the result text."""
     params = {
         "format": "json",
         "COMMAND": f"'{command}'",
@@ -209,7 +282,7 @@ def query_horizons(body_id, lon_deg, lat_deg, start_time, stop_time,
     if not result_text:
         raise HorizonsError("Empty result from Horizons API")
 
-    return _parse_horizons_response(result_text, quantities=quantities)
+    return result_text
 
 
 def _parse_horizons_response(result_text, quantities="4,20"):
@@ -432,7 +505,8 @@ def query_parent_body(parent_id, satellite_id, lon_deg, lat_deg,
     satellite_id : str
         Horizons body ID for the satellite (e.g. ``"301"`` for Moon).
     lon_deg : float
-        East longitude [degrees] on the satellite surface.
+        East longitude [degrees] on the satellite surface.  Automatically
+        converted for bodies that use west-positive longitude in Horizons.
     lat_deg : float
         Latitude [degrees] on the satellite surface.
     start_time : str
@@ -542,7 +616,8 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
     planet_name : str
         Planet name (e.g. ``"Moon"``).
     lon_deg : float
-        East longitude [degrees].
+        East longitude [degrees].  Automatically converted for bodies
+        that use west-positive longitude in Horizons.
     lat_deg : float
         Latitude [degrees].
     start_time : str

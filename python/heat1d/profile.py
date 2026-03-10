@@ -90,7 +90,7 @@ class Profile(object):
         if self._T_at_last_update is not None:
             if np.max(np.abs(self.T - self._T_at_last_update)) < self._prop_cache_threshold:
                 return
-        self.cp = heatCapacity(self.planet, self.T)
+        self.cp = heatCapacity(self.planet, self.T, model=self.config.cp_model)
         if self._R350_array is not None:
             self.k = self.kc * (1.0 + self._R350_array * self.T**3)
         else:
@@ -99,7 +99,7 @@ class Profile(object):
 
     # Keep individual methods for backward compatibility
     def update_cp(self):
-        self.cp = heatCapacity(self.planet, self.T)
+        self.cp = heatCapacity(self.planet, self.T, model=self.config.cp_model)
 
     def update_k(self):
         if self._R350_array is not None:
@@ -107,7 +107,7 @@ class Profile(object):
         else:
             self.k = thermCond(self.kc, self.T, self.R350)
 
-    def update_T(self, dt, Qs=0, Qb=0):
+    def update_T(self, dt, Qs=0, Qb=0, Qs_prev=None):
         """Core thermal computation.
 
         Updates temperature profile using the selected solver scheme.
@@ -120,17 +120,23 @@ class Profile(object):
             Surface heating rate [W.m-2]
         Qb : float
             Bottom heating rate (interior heat flow) [W.m-2]
+        Qs_prev : float, optional
+            Absorbed flux at the previous time step [W/m^2], used by
+            the Volterra predictor when enabled.
         """
         # Save old boundary values (needed for Crank-Nicolson explicit half)
         T0_old = self.T[0]
         Tn_old = self.T[-1]
 
-        # Temperature of first layer is determined by energy balance
-        # at the surface
-        surfTemp(self, Qs)
+        # Operator splitting: solve BCs first, then interior.
+        # The nonlinear T^4 surface balance is solved to convergence via
+        # Newton's method, producing fixed Dirichlet boundary values for
+        # the interior solver. This avoids the instability that arises
+        # when T^4 is linearized and embedded in the tridiagonal system
+        # (Williams & Curry 1977; Schorghofer & Khatiwala 2024).
+        surfTemp(self, Qs, Qs_prev=Qs_prev, dt=dt)
 
-        # Temperature of the last layer is determined by the interior
-        # heat flux
+        # Bottom BC: linear gradient from interior heat flux
         botTemp(self, Qb)
 
         # Dispatch to the appropriate solver

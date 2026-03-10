@@ -33,7 +33,11 @@ class Configurator:
     adaptive_tol: float = 1.0  # [K] step-doubling error tolerance; None = fixed dt
     # Solver selection
     solver: str = "explicit"  # "explicit", "crank-nicolson", or "implicit"
-    equil_solver: str = "fourier-matrix"  # solver used during equilibration phase
+    equil_solver: str = "implicit"  # solver used during equilibration phase
+    # Heat capacity model
+    cp_model: str = "polynomial"  # "polynomial" (Hemingway/Ledlow) or "biele2022"
+    # Volterra predictor for surface BC (Schorghofer & Khatiwala 2024)
+    use_volterra_predictor: bool = False
     # Time control (all in seconds; None = use defaults computed from planet.day)
     output_interval: float = None  # Output spacing [s]; None = every solver step
     equil_dt: float = None  # Equilibration timestep [s]; None = day/48
@@ -53,6 +57,12 @@ class Configurator:
             )
         if self.F > 0.5:
             raise ValueError(f"Fourier number F={self.F} must be <= 0.5 for stability")
+        valid_cp_models = ("polynomial", "biele2022")
+        if self.cp_model not in valid_cp_models:
+            raise ValueError(
+                f"Invalid cp_model '{self.cp_model}'. "
+                f"Must be one of {valid_cp_models}"
+            )
         if self.adaptive_tol is not None and self.adaptive_tol <= 0:
             raise ValueError(
                 f"adaptive_tol must be positive, got {self.adaptive_tol}"
@@ -97,6 +107,8 @@ class Configurator:
             "radiative_conductivity": "chi",
             "adaptive_tolerance": "adaptive_tol",
             "accuracy": "adaptive_tol",
+            "heat_capacity_model": "cp_model",
+            "volterra_predictor": "use_volterra_predictor",
             "output_interval": "output_interval",
             "equilibration_dt": "equil_dt",
             "dt_init": "dt_init",

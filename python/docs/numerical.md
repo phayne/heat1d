@@ -71,10 +71,14 @@ $$
 This forms a tridiagonal system that is solved using the Thomas algorithm
 (see below).
 
-**Stability**: The implicit scheme is *unconditionally stable*, meaning the time
-step is limited by accuracy rather than stability. This allows much larger time
-steps (e.g., ~24 steps per lunar day), providing a ~35× speedup over the
-explicit scheme.
+**Stability**: The implicit scheme is *unconditionally stable* for the interior
+nodes, which see fixed Dirichlet boundary values from the Newton-converged
+surface temperature. The unconditional stability of implicit methods applies
+strictly to *linear* problems; the nonlinear $T^4$ radiation boundary condition
+is handled separately via operator splitting (see
+[Boundary Conditions](boundary.md#operator-splitting-and-stability)).
+This allows much larger time steps (e.g., ~24 steps per lunar day), providing a
+~35× speedup over the explicit scheme.
 
 **Accuracy**: First-order in time (O(Δt)), same as explicit.
 
@@ -93,7 +97,8 @@ $$
 The left-hand side forms a tridiagonal system with half-coefficients, while the
 right-hand side uses the old temperature values.
 
-**Stability**: Unconditionally stable, like the fully implicit scheme.
+**Stability**: Unconditionally stable for the interior tridiagonal system, like
+the fully implicit scheme. See [Boundary Conditions](boundary.md#operator-splitting-and-stability) for how the nonlinear surface BC is handled.
 
 **Accuracy**: Second-order in time (O(Δt²)), the most accurate of the
 three schemes for a given time step.
@@ -329,6 +334,8 @@ time-stepping solver starts from a well-converged state. See
 
 ## References
 
+Biele, J., Grott, M., Kührt, E., & Kossacki, K. J. (2022). Specific heat capacity measurements of meteorites and their constituents. *International Journal of Thermophysics*, 43, 144. [doi:10.1007/s10765-022-03067-y](https://doi.org/10.1007/s10765-022-03067-y)
+
 Carslaw, H. S., & Jaeger, J. C. (1959). *Conduction of Heat in Solids* (2nd ed.). Oxford University Press.
 
 Hayne, P. O., et al. (2017). Global regolith thermophysical properties of the Moon from the Diviner Lunar Radiometer Experiment. *J. Geophys. Res. Planets*, 122, 2371--2400. [doi:10.1002/2017JE005387](https://doi.org/10.1002/2017JE005387)
@@ -340,3 +347,7 @@ Linsky, J. L. (1966). Models of the lunar surface including temperature-dependen
 Maillet, D., André, S., Batsale, J.-C., Degiovanni, A., & Moyne, C. (2000). *Thermal Quadrupoles: Solving the Heat Equation through Integral Transforms*. Wiley. [doi:10.1002/9780470694374](https://doi.org/10.1002/9780470694374)
 
 Pipes, L. A. (1957). Matrix analysis of heat transfer problems. *Journal of the Franklin Institute*, 263(3), 195--206. [doi:10.1016/0016-0032(57)90927-6](https://doi.org/10.1016/0016-0032(57)90927-6)
+
+Schorghofer, N., & Khatiwala, S. (2024). Semi-implicit numerical schemes for surface energy balance and subsurface heat conduction with phase change. *The Planetary Science Journal*, 5, 120. [doi:10.3847/PSJ/ad4351](https://doi.org/10.3847/PSJ/ad4351)
+
+Williams, G. P., & Curry, A. R. (1977). A note on the numerical solution of the heat equation with radiation boundary condition. *International Journal for Numerical Methods in Engineering*, 11, 1605--1611. [doi:10.1002/nme.1620111012](https://doi.org/10.1002/nme.1620111012)

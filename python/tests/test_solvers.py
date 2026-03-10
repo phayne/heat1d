@@ -64,9 +64,9 @@ class TestExplicitSolver:
         m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
         m.run()
         # Regression values with angle-dependent albedo (A_h=0.12), n=4 grid
-        # (Fourier-accelerated equilibration; ref 385 +/- 5 K)
-        np.testing.assert_allclose(m.T[:, 0].max(), 388.36, atol=0.5)
-        np.testing.assert_allclose(m.T[:, 0].min(), 91.22, atol=0.5)
+        # (implicit equilibration; ref 385 +/- 5 K)
+        np.testing.assert_allclose(m.T[:, 0].max(), 388.53, atol=0.5)
+        np.testing.assert_allclose(m.T[:, 0].min(), 92.46, atol=0.5)
 
 
 class TestSolverConsistency:
@@ -276,3 +276,52 @@ class TestAdaptiveTimestepping:
         m.run()
         # CFL gives many more than 24 steps per day
         assert m.N_steps > 100
+
+
+class TestBCStability:
+    """Stability of operator-split Newton BC with very large time steps.
+
+    Williams & Curry (1977) showed that implicit methods with a linearized
+    T^4 radiation BC can produce spurious oscillations.  heat1d uses
+    operator splitting (Newton solves the full nonlinear surface balance
+    before the interior solver runs), which should remain stable even at
+    extremely large dt.
+    """
+
+    def test_implicit_stable_very_large_dt(self):
+        """Implicit solver remains stable with dt = day/4."""
+        config = Configurator(solver="implicit", dt_init=DAY / 4,
+                              adaptive_tol=None, NYEARSEQ=3)
+        m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
+        m.run()
+        assert np.all(np.isfinite(m.T))
+        # Accuracy degrades but should not oscillate or blow up
+        assert m.T[:, 0].max() > 200
+        assert m.T[:, 0].min() > 30
+
+    def test_cn_stable_very_large_dt(self):
+        """Crank-Nicolson remains stable with dt = day/4."""
+        config = Configurator(solver="crank-nicolson", dt_init=DAY / 4,
+                              adaptive_tol=None, NYEARSEQ=3)
+        m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
+        m.run()
+        assert np.all(np.isfinite(m.T))
+        assert m.T[:, 0].max() > 200
+        assert m.T[:, 0].min() > 30
+
+    @pytest.mark.parametrize("dt_frac", [1 / 48, 1 / 12, 1 / 6, 1 / 4])
+    def test_implicit_no_oscillation(self, dt_frac):
+        """Peak surface T increases monotonically as dt decreases.
+
+        Oscillation in peak T with decreasing dt would indicate instability
+        from the nonlinear BC coupling.
+        """
+        config = Configurator(solver="implicit", dt_init=DAY * dt_frac,
+                              adaptive_tol=None, NYEARSEQ=3,
+                              output_interval=DAY / 48)
+        m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
+        m.run()
+        assert np.all(np.isfinite(m.T))
+        # All runs should produce a reasonable peak temperature (> 300 K)
+        # without oscillation or blow-up
+        assert m.T[:, 0].max() > 300

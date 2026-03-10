@@ -63,6 +63,62 @@ $$
 \frac{-3 T_0 + 4 T_1 - T_2}{2 \Delta z_0}
 $$
 
+### Operator Splitting and Stability
+
+The surface boundary condition uses **operator splitting**: the nonlinear
+$T^4$ radiation term is solved to full convergence via Newton's method
+*before* the interior solver runs. The interior tridiagonal system then sees
+fixed Dirichlet boundary values and remains unconditionally stable.
+
+This contrasts with **linearization** approaches (e.g., Schorghofer &
+Khatiwala 2024, PSJ 5:120) that approximate $T^4$ around a reference
+temperature $T_r$:
+
+$$
+T^4 \approx -3 T_r^4 + 4 T_r^3 T
+$$
+
+and fold the linearized radiation term into the tridiagonal matrix. Williams
+& Curry (1977, IJNME 11:1605) showed that this can produce spurious surface
+temperature oscillations when $T_r$ is a poor estimate of the true surface
+temperature (e.g., at sunrise, when the surface temperature changes rapidly).
+
+The operator-splitting approach avoids this conditional instability entirely,
+at the cost of first-order accuracy in the boundary-condition coupling (vs.
+second-order for a fully coupled Crank-Nicolson scheme). In practice, the
+accuracy trade-off is small because the Newton iteration converges the surface
+temperature to within the DTSURF tolerance (0.1 K) at every time step.
+
+### Volterra Integral Predictor
+
+When `use_volterra_predictor=True`, the Newton iteration is initialized with
+a second-order accurate prediction of the surface temperature from the
+Volterra integral equation (Schorghofer & Khatiwala 2024, PSJ 5:120, Eq. 62):
+
+$$
+T_s(t) - T_s(0) \approx \frac{-H(0,0) - \varepsilon\sigma T_s^4(0) + \frac{2Q(t) + Q(0)}{3}}{\sqrt{\frac{\pi}{4t}} \Gamma + \frac{8}{3} \varepsilon\sigma T_s^3(0)}
+$$
+
+where $\Gamma = \sqrt{\rho c_p K}$ is the thermal inertia, $H(0,0)$ is the
+conductive heat flux at the surface, and $Q$ is the absorbed solar flux.
+
+The predictor provides a better initial guess for the Newton iteration,
+particularly at sunrise where the surface temperature changes rapidly and the
+previous time step's temperature is a poor starting point. It does not change
+the final converged result — only the number of Newton iterations needed.
+
+To enable:
+
+```python
+config = Configurator(use_volterra_predictor=True)
+```
+
+Or via YAML:
+
+```yaml
+volterra_predictor: true
+```
+
 ## Bottom Boundary Condition
 
 The bottom boundary is set by the interior heat flux $Q_b$:

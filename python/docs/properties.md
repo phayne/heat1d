@@ -60,7 +60,12 @@ explicitly through its outer iteration loop (see
 
 ## Heat Capacity
 
-The heat capacity $c_p(T)$ is a polynomial function of temperature, based on
+Two heat capacity models are available, selectable via the `cp_model`
+configuration option.
+
+### Polynomial Model (default)
+
+The default model is a polynomial function of temperature, based on
 laboratory data from Hemingway et al. (1981) and Ledlow et al. (1992):
 
 $$
@@ -70,6 +75,48 @@ $$
 where the coefficients are stored in the `planets` package and are specific to
 each planetary body. The polynomial yields non-physical (negative) values for
 $T < 1.3$ K, but is valid for $T \gtrsim 10$ K.
+
+### Biele et al. (2022) Model
+
+An alternative rational-function model from Biele et al. (2022, IJTP 43:144,
+Eq. 24) avoids the low-temperature sign problem by using a log-log
+parametrization:
+
+$$
+\ln c_p = \frac{p_1 x^3 + p_2 x^2 + p_3 x + p_4}{x^2 + q_1 x + q_2}
+$$
+
+where $x = \ln T$ and the coefficients are:
+
+| Parameter | Value |
+|---|---|
+| $p_1$ | 3.0 |
+| $p_2$ | −54.45 |
+| $p_3$ | 306.8 |
+| $p_4$ | −376.6 |
+| $q_1$ | −16.81 |
+| $q_2$ | 87.32 |
+
+This model correctly reproduces the Debye $T^3$ behavior at low temperatures
+($c_p \to 0$ as $T \to 0$) and agrees with the polynomial model to within
+~15% over 100--400 K. It is valid from cryogenic temperatures up to ~2000 K.
+
+To use the Biele model:
+
+```python
+from heat1d import Configurator, Model
+import planets
+
+config = Configurator(cp_model="biele2022")
+m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
+m.run()
+```
+
+Or via YAML configuration:
+
+```yaml
+heat_capacity_model: biele2022
+```
 
 ## Thermal Inertia
 

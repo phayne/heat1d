@@ -96,7 +96,11 @@ def solve_implicit(T, dt, rho, cp, k, g1, g2):
     """Fully implicit (backward Euler) interior temperature update.
 
     Solves the tridiagonal system for the interior temperatures at the
-    new time level using the Thomas algorithm.
+    new time level using the Thomas algorithm.  The nonlinear surface
+    T^4 boundary condition is *not* embedded in this system — it is
+    solved separately via Newton's method (operator splitting), so the
+    tridiagonal system sees only fixed Dirichlet BCs and is
+    unconditionally stable.
 
     Parameters
     ----------
@@ -138,6 +142,8 @@ def solve_crank_nicolson(T, dt, rho, cp, k, g1, g2, T0_old=None, Tn_old=None):
     """Crank-Nicolson (semi-implicit) interior temperature update.
 
     Second-order in time. Averages explicit and implicit contributions.
+    As with :func:`solve_implicit`, the nonlinear surface BC is handled
+    externally via operator splitting, not embedded in this system.
 
     Parameters
     ----------

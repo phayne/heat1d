@@ -3,11 +3,15 @@
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
+    QLabel,
     QPushButton,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -92,6 +96,12 @@ class PlotPanel(QWidget):
         self.diff_check.toggled.connect(self._replot)
         toolbar_row.addWidget(self.diff_check)
 
+        self.log_depth_check = QCheckBox("Log depth")
+        self.log_depth_check.setToolTip("Toggle logarithmic / linear depth axis")
+        self.log_depth_check.setChecked(True)
+        self.log_depth_check.toggled.connect(self._replot)
+        toolbar_row.addWidget(self.log_depth_check)
+
         toolbar_row.addStretch()
 
         self.export_fig_btn = QPushButton("Export Figure")
@@ -102,7 +112,51 @@ class PlotPanel(QWidget):
         self.export_data_btn.clicked.connect(self._export_data)
         toolbar_row.addWidget(self.export_data_btn)
 
+        self.save_yaml_btn = QPushButton("Save YAML")
+        toolbar_row.addWidget(self.save_yaml_btn)
+
+        self.load_yaml_btn = QPushButton("Load YAML")
+        toolbar_row.addWidget(self.load_yaml_btn)
+
         layout.addLayout(toolbar_row)
+
+        # Profile snapshots slider row (visible only for Depth Profile)
+        self._snap_row = QHBoxLayout()
+        self._snap_label = QLabel("Snapshots: 0")
+        self._snap_slider = QSlider(Qt.Horizontal)
+        self._snap_slider.setRange(0, 24)
+        self._snap_slider.setValue(0)
+        self._snap_slider.setTickPosition(QSlider.TicksBelow)
+        self._snap_slider.setTickInterval(1)
+        self._snap_slider.valueChanged.connect(self._on_snap_changed)
+        self._snap_row.addWidget(self._snap_label)
+        self._snap_row.addWidget(self._snap_slider)
+        layout.addLayout(self._snap_row)
+        self._set_snap_row_visible(False)
+
+        # Depth range row (visible only for depth-related plots)
+        self._depth_row = QHBoxLayout()
+        self._depth_row_label = QLabel("Depth range [m]:")
+        self._depth_min_spin = QDoubleSpinBox()
+        self._depth_min_spin.setPrefix("min: ")
+        self._depth_min_spin.setDecimals(4)
+        self._depth_min_spin.setRange(0.0, 100.0)
+        self._depth_min_spin.setValue(0.0)
+        self._depth_min_spin.setSingleStep(0.01)
+        self._depth_min_spin.editingFinished.connect(self._replot)
+        self._depth_max_spin = QDoubleSpinBox()
+        self._depth_max_spin.setPrefix("max: ")
+        self._depth_max_spin.setDecimals(4)
+        self._depth_max_spin.setRange(0.0, 100.0)
+        self._depth_max_spin.setValue(0.0)  # 0 = auto (use full grid)
+        self._depth_max_spin.setSingleStep(0.1)
+        self._depth_max_spin.editingFinished.connect(self._replot)
+        self._depth_row.addWidget(self._depth_row_label)
+        self._depth_row.addWidget(self._depth_min_spin)
+        self._depth_row.addWidget(self._depth_max_spin)
+        self._depth_row.addStretch()
+        layout.addLayout(self._depth_row)
+        self._set_depth_row_visible(False)
 
         # Matplotlib canvas
         self.figure = Figure(figsize=(8, 5), tight_layout=True)
@@ -112,6 +166,46 @@ class PlotPanel(QWidget):
         # Navigation toolbar (zoom, pan, home, save)
         self.nav_toolbar = NavigationToolbar2QT(self.canvas, self)
         layout.addWidget(self.nav_toolbar)
+
+    # ---- Slider helpers ----
+
+    def _set_snap_row_visible(self, visible):
+        self._snap_label.setVisible(visible)
+        self._snap_slider.setVisible(visible)
+
+    def _set_depth_row_visible(self, visible):
+        self._depth_row_label.setVisible(visible)
+        self._depth_min_spin.setVisible(visible)
+        self._depth_max_spin.setVisible(visible)
+
+    def _apply_depth_scale(self, ax, z):
+        """Set depth axis scale (log or linear) with depth increasing downward.
+
+        Uses spinbox overrides when non-zero; otherwise falls back to the
+        full grid extent.
+
+        Parameters
+        ----------
+        ax : matplotlib Axes
+        z : array of depth values [m]
+        """
+        z_min_user = self._depth_min_spin.value()
+        z_max_user = self._depth_max_spin.value()
+
+        if self.log_depth_check.isChecked():
+            ax.set_yscale("log")
+            z_shallow = z_min_user if z_min_user > 0 else z[1]
+            z_deep = z_max_user if z_max_user > 0 else z[-1]
+            ax.set_ylim(z_deep, z_shallow)
+        else:
+            ax.set_yscale("linear")
+            z_shallow = z_min_user if z_min_user > 0 else z[0]
+            z_deep = z_max_user if z_max_user > 0 else z[-1]
+            ax.set_ylim(z_deep, z_shallow)
+
+    def _on_snap_changed(self, value):
+        self._snap_label.setText(f"Snapshots: {value}")
+        self._replot()
 
     # ---- Public API ----
 
@@ -128,6 +222,12 @@ class PlotPanel(QWidget):
     # ---- Plotting methods ----
 
     def _replot(self):
+        plot_type = self.plot_type.currentText()
+        has_depth = plot_type in ("Depth Profile", "Heatmap", "Combined")
+        is_profile = plot_type in ("Depth Profile", "Combined")
+        self._set_snap_row_visible(is_profile)
+        self._set_depth_row_visible(has_depth)
+        self.log_depth_check.setVisible(has_depth)
         self._render_to(self.figure)
         self.canvas.draw()
 
@@ -155,7 +255,8 @@ class PlotPanel(QWidget):
 
         elif plot_type == "Depth Profile":
             ax = fig.add_subplot(111)
-            self._draw_profile(ax, model, record.label)
+            n_snap = self._snap_slider.value()
+            self._draw_profile(ax, model, record.label, n_snapshots=n_snap)
             ax.set_title(f"Temperature Profile: {record.label}")
 
         elif plot_type == "Flux":
@@ -171,7 +272,8 @@ class PlotPanel(QWidget):
         elif plot_type == "Combined":
             ax1 = fig.add_subplot(121)
             ax2 = fig.add_subplot(122)
-            self._draw_profile(ax1, model, record.label)
+            n_snap = self._snap_slider.value()
+            self._draw_profile(ax1, model, record.label, n_snapshots=n_snap)
             self._draw_diurnal(ax2, model, record.label)
 
     def _diff_labels(self, records):
@@ -318,8 +420,7 @@ class PlotPanel(QWidget):
                             lw=0.8, ls=":")
                 ax.set_xlabel("Temperature [K]")
                 ax.set_title("Depth Profile Comparison")
-            ax.set_yscale("log")
-            ax.set_ylim(1.5, records[0].model.profile.z[1])
+            self._apply_depth_scale(ax, records[0].model.profile.z)
             ax.set_ylabel("Depth [m]")
             ax.legend()
 
@@ -405,8 +506,7 @@ class PlotPanel(QWidget):
                              ls=ls, label=labels[i])
                 ax1.set_xlabel("Temperature [K]")
                 ax2.set_ylabel("Surface Temperature [K]")
-            ax1.set_yscale("log")
-            ax1.set_ylim(1.5, records[0].model.profile.z[1])
+            self._apply_depth_scale(ax1, records[0].model.profile.z)
             ax1.set_ylabel("Depth [m]")
             ax1.legend()
             ax2.set_xlabel("Local Time (hr)")
@@ -425,19 +525,33 @@ class PlotPanel(QWidget):
         ax.set_ylabel("Temperature [K]")
         ax.legend(title="Depth:", ncol=2, frameon=False)
 
-    def _draw_profile(self, ax, model, label=""):
-        """Draw min/max/mean depth profile (single-run)."""
+    def _draw_profile(self, ax, model, label="", n_snapshots=0):
+        """Draw min/max/mean depth profile with optional instant snapshots."""
+        import matplotlib.pyplot as plt
+
         ax.plot(model.T.max(0), model.profile.z,
                 color="#c0392b", ls="--", lw=1.2, label="$T_{max}$")
         ax.plot(model.T.min(0), model.profile.z,
                 color="#2c3e80", ls=":", lw=1.2, label="$T_{min}$")
         ax.plot(model.T.mean(0), model.profile.z,
                 color="black", ls="-", lw=1.5, label="$T_{avg}$")
-        ax.set_yscale("log")
-        ax.set_ylim(1.5, model.profile.z[1])
+
+        # Instantaneous profiles at evenly spaced local times
+        if n_snapshots > 0:
+            cmap = plt.cm.twilight_shifted
+            indices = np.linspace(0, len(model.lt) - 1, n_snapshots,
+                                  dtype=int, endpoint=False)
+            for j, idx in enumerate(indices):
+                color = cmap(j / n_snapshots)
+                lt_hr = model.lt[idx]
+                ax.plot(model.T[idx, :], model.profile.z, color=color,
+                        lw=0.8, alpha=0.7,
+                        label=f"{lt_hr:.1f} hr")
+
+        self._apply_depth_scale(ax, model.profile.z)
         ax.set_xlabel("Temperature [K]")
         ax.set_ylabel("Depth [m]")
-        ax.legend(frameon=False)
+        ax.legend(frameon=False, fontsize=8, ncol=2)
 
     def _draw_flux(self, ax, record):
         """Draw flux time series for a single run."""
@@ -498,7 +612,7 @@ class PlotPanel(QWidget):
             clabel = "Temperature [K]"
 
         im = ax.pcolormesh(lt, z, T.T, shading="auto", cmap=cmap, norm=norm)
-        ax.invert_yaxis()
+        self._apply_depth_scale(ax, z)
         ax.set_xlabel("Local Time (hr)")
         ax.set_ylabel("Depth [m]")
         fig.colorbar(im, ax=ax, label=clabel, pad=0.02)

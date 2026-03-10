@@ -4,7 +4,11 @@ import numpy as np
 import planets
 import pytest
 
-from heat1d.properties import albedoVar, T_eq, T_radeq, heatCapacity, thermCond
+from heat1d.config import Configurator
+from heat1d.model import Model
+from heat1d.properties import (
+    albedoVar, T_eq, T_radeq, heatCapacity, heatCapacity_biele, thermCond,
+)
 
 
 class TestAlbedo:
@@ -89,3 +93,58 @@ class TestThermCond:
         R = R350(chi)
         k = thermCond(kc, 350.0, R)
         np.testing.assert_allclose(k, kc * (1 + chi), rtol=1e-10)
+
+
+DAY = planets.Moon.day
+
+
+class TestBieleHeatCapacity:
+    """Tests for the Biele et al. (2022) heat capacity model."""
+
+    def test_positive_all_T(self):
+        """Biele c_p is positive for T from 1 to 2000 K."""
+        T = np.logspace(0, np.log10(2000), 200)
+        cp = heatCapacity_biele(T)
+        assert np.all(cp > 0)
+
+    def test_no_negative_at_low_T(self):
+        """Unlike polynomial, Biele c_p is positive even below 1.3 K."""
+        T = np.array([0.5, 1.0, 1.3, 2.0, 5.0])
+        cp = heatCapacity_biele(T)
+        assert np.all(cp > 0)
+
+    def test_T_cubed_at_low_T(self):
+        """At very low T, c_p scales as ~T^3 (Debye law)."""
+        T = np.array([2.0, 4.0])
+        cp = heatCapacity_biele(T)
+        # cp(4)/cp(2) should be ~(4/2)^3 = 8
+        ratio = cp[1] / cp[0]
+        np.testing.assert_allclose(ratio, 8.0, rtol=0.5)
+
+    def test_agrees_with_polynomial_typical_T(self):
+        """Biele and polynomial models agree within 15% at 100-400 K."""
+        T = np.linspace(100, 400, 50)
+        cp_poly = heatCapacity(planets.Moon, T, model="polynomial")
+        cp_biele = heatCapacity(planets.Moon, T, model="biele2022")
+        np.testing.assert_allclose(cp_biele, cp_poly, rtol=0.15)
+
+    def test_dispatch_via_model_kwarg(self):
+        """heatCapacity() dispatches correctly with model='biele2022'."""
+        T = np.array([200.0, 300.0])
+        cp_direct = heatCapacity_biele(T)
+        cp_dispatch = heatCapacity(planets.Moon, T, model="biele2022")
+        np.testing.assert_allclose(cp_dispatch, cp_direct)
+
+    def test_config_validation(self):
+        """Invalid cp_model raises ValueError."""
+        with pytest.raises(ValueError):
+            Configurator(cp_model="invalid")
+
+    def test_full_run_with_biele(self):
+        """Full model run with Biele c_p produces reasonable results."""
+        config = Configurator(solver="explicit", cp_model="biele2022")
+        m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
+        m.run()
+        assert np.all(np.isfinite(m.T))
+        assert m.T[:, 0].max() > 370
+        assert m.T[:, 0].min() > 80

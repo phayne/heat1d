@@ -76,6 +76,7 @@ class Model(object):
 
         # Initialize arrays
         self.Qs = 0.0  # surface flux
+        self._Qs_prev = 0.0  # previous surface flux (for Volterra predictor)
 
         # Initialize model profile
         self.ndays = ndays
@@ -161,6 +162,14 @@ class Model(object):
         # The orbit (M, nu, r, dec) continues smoothly from equilibration.
         self._nu0 = self.nu
 
+        # Initialize _Qs_prev so the first output-phase advance() has a
+        # physically correct previous flux (instead of the 0.0 from __init__).
+        if self.psr_d_D is not None:
+            self.surfFluxPSR()
+        else:
+            self.surfFlux()
+        self._Qs_prev = self.Qs
+
         # Phase-align with external flux before activating it:
         # Equilibration always ends at local noon; advance the analytical
         # model to match the starting local time of the flux series.
@@ -170,6 +179,8 @@ class Model(object):
             self.t = 0.0
             self._nu0 = self.nu
             self._flux_active = True
+            # Update _Qs_prev to the flux at the aligned phase
+            self._Qs_prev = self.Qs
 
         # Output phase
         endtime = self.ndays * self.planet.day
@@ -296,13 +307,15 @@ class Model(object):
         if dt_max is not None and self.dt > dt_max:
             self.dt = dt_max
         self.updateOrbit()
+        self._Qs_prev = self.Qs
         if self._flux_active and self.flux_series is not None:
             self._lookupFlux()
         elif self.psr_d_D is not None:
             self.surfFluxPSR()
         else:
             self.surfFlux()
-        self.profile.update_T(self.dt, self.Qs, self.planet.Qb)
+        self.profile.update_T(self.dt, self.Qs, self.planet.Qb,
+                              Qs_prev=self._Qs_prev)
         self.profile.update_properties()
         self.t += self.dt  # Increment time
 
@@ -407,13 +420,15 @@ class Model(object):
         """Perform one fixed-size step, mutating all model state."""
         self.dt = dt_step
         self.updateOrbit()
+        self._Qs_prev = self.Qs
         if self._flux_active and self.flux_series is not None:
             self._lookupFlux()
         elif self.psr_d_D is not None:
             self.surfFluxPSR()
         else:
             self.surfFlux()
-        self.profile.update_T(dt_step, self.Qs, self.planet.Qb)
+        self.profile.update_T(dt_step, self.Qs, self.planet.Qb,
+                              Qs_prev=self._Qs_prev)
         self.profile.update_properties()
         self.t += dt_step
 
@@ -429,6 +444,7 @@ class Model(object):
             'dec': self.dec,
             'nudot': self.nudot,
             'Qs': self.Qs,
+            '_Qs_prev': self._Qs_prev,
             '_T_cache': (
                 self.profile._T_at_last_update.copy()
                 if self.profile._T_at_last_update is not None else None
@@ -448,6 +464,7 @@ class Model(object):
         self.dec = state['dec']
         self.nudot = state['nudot']
         self.Qs = state['Qs']
+        self._Qs_prev = state['_Qs_prev']
         self.profile._T_at_last_update = state['_T_cache']
         self.profile.cp[:] = state['cp']
         self.profile.k[:] = state['k']
