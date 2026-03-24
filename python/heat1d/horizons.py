@@ -48,6 +48,14 @@ HORIZONS_BODY_IDS = {
     "Ganymede": "503",
     "Triton": "801",
     "Bennu": "2101955",
+    # Lucy mission targets
+    "Donaldjohanson": "2052246",
+    "Eurybates": "2003548",
+    "Polymele": "2015094",
+    "Leucus": "2011351",
+    "Orus": "2021900",
+    "Patroclus": "2000617",
+    "Menoetius": "2000617",  # binary companion, same Horizons system
 }
 
 
@@ -661,7 +669,7 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
 
     # Resolve planet object
     if planet is None:
-        import planets as planets_pkg
+        from heat1d import planets as planets_pkg
         planet = getattr(planets_pkg, planet_name, None)
         if planet is None:
             raise HorizonsError(
