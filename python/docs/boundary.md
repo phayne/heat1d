@@ -292,7 +292,7 @@ automatically falls back to the implicit solver.
 
 ```python
 from heat1d import Model
-import planets
+from heat1d import planets
 import numpy as np
 
 model = Model(planet=planets.Moon, lat=np.deg2rad(85), ndays=1, psr_d_D=0.2)

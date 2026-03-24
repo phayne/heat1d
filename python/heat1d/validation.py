@@ -24,7 +24,7 @@ import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import numpy as np
-import planets
+from . import planets
 
 from .config import Configurator
 from .model import Model

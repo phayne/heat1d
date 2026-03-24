@@ -6,6 +6,7 @@ __author__ = """Paul O. Hayne"""
 __email__ = "paul.hayne@lasp.colorado.edu"
 __version__ = "0.4.0"
 
+from . import planets
 from .config import Configurator, R350
 from .grid import skinDepth, spatialGrid
 from .properties import albedoVar, T_radeq, T_eq, heatCapacity, heatCapacity_biele, thermCond

@@ -29,7 +29,7 @@ import argparse
 import sys
 
 import numpy as np
-import planets
+from . import planets
 
 from . import orbits
 from .flux import write_flux_file

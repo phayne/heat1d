@@ -25,7 +25,7 @@ def _resolve_planet(name, overrides):
     planet : object
         Planet object (possibly modified).
     """
-    import planets as planets_pkg
+    from heat1d import planets as planets_pkg
 
     planet = getattr(planets_pkg, name, None)
     if planet is None:

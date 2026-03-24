@@ -34,7 +34,6 @@ dependencies = [
     "numba>=0.57",
     "numpy",
     "matplotlib",
-    "planets>=0.4.6",
     "pyyaml>=5.0",
     "astropy",
     "scipy",

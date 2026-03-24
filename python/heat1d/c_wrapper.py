@@ -316,7 +316,7 @@ def run_c_validation_suite(output_dir="output/c_validation", quiet=False,
     import time
 
     import matplotlib.pyplot as plt
-    import planets
+    from heat1d import planets
 
     from .validation import (
         plot_diurnal_curves_equator,
@@ -443,7 +443,7 @@ def compare_c_python(lat_deg=0.0, solver="explicit", albedo=0.12,
     """
     import copy
 
-    import planets
+    from heat1d import planets
 
     from .config import Configurator
     from .model import Model

@@ -7,7 +7,7 @@ import copy
 import warnings
 
 import numpy as np
-import planets
+from . import planets
 
 from . import orbits
 from .config import Configurator
@@ -84,11 +84,18 @@ class Model(object):
                                custom_layers=custom_layers)
 
         # Model run times
-        # Equilibration time -- TODO: change to convergence check
-        self.equiltime = (
-            config.NYEARSEQ * planet.year
-            - (config.NYEARSEQ * planet.year) % planet.day
-        )
+        self._max_equil_orbits = 50
+        if config.NYEARSEQ == 0:
+            # Auto mode: run up to max orbits, check convergence each orbit
+            self._auto_equil = True
+            max_time = self._max_equil_orbits * planet.year
+            self.equiltime = max_time - max_time % planet.day
+        else:
+            self._auto_equil = False
+            self.equiltime = (
+                config.NYEARSEQ * planet.year
+                - (config.NYEARSEQ * planet.year) % planet.day
+            )
         # Run time for output
         self.endtime = self.equiltime + ndays * planet.day
         self.t = 0.0
@@ -143,20 +150,56 @@ class Model(object):
                 self.dt = self._equil_dt
             else:
                 self.dt = getTimeStep(self.profile, self.planet.day, config)
-            while self.t < self.equiltime:
-                self.advance()
+
+            if self._auto_equil:
+                # Convergence-based equilibration: run orbit-by-orbit,
+                # comparing the bottom-layer temperature at the same orbital
+                # phase (noon) across successive orbits.  The bottom layer
+                # is the slowest to equilibrate; once it converges the
+                # surface and intermediate layers are already stable.
+                T_bot_prev = float(self.profile.T[-1])
+                orbit_time = self.planet.year - self.planet.year % self.planet.day
+                for orbit in range(1, self._max_equil_orbits + 1):
+                    orbit_end = orbit * orbit_time
+                    while self.t < orbit_end:
+                        self.advance()
+                    T_bot = float(self.profile.T[-1])
+                    if abs(T_bot - T_bot_prev) < config.DTBOT:
+                        break
+                    T_bot_prev = T_bot
+                self._equil_orbits = orbit
+                self.equiltime = self.t
+            else:
+                # Fixed-time equilibration
+                while self.t < self.equiltime:
+                    self.advance()
+                self._equil_orbits = config.NYEARSEQ
+
             config.solver = output_solver
             self._adaptive = adaptive_was_on
 
+        # --- Phase 1b: Warmup ---
+        # Run 1 diurnal cycle with the output solver at CFL-limited dt
+        # to eliminate the transient caused by the equil_dt → output_dt
+        # switch (the implicit solver's steady state depends on dt).
+        # Adaptive is disabled during warmup and output because CFL-limited
+        # stepping resolves the diurnal wave correctly; adaptive's large
+        # steps would introduce phase lag and amplitude damping.
+        if config.solver != "explicit":
+            self._output_cfl = True
+            self._adaptive = False
+        self.dt = computeCFL(self.profile, config)
+        warmup_end = self.t + self.planet.day
+        while self.t < warmup_end:
+            self.advance()
+        self._output_cfl = False
+
         # --- Prepare for output phase ---
-        # For non-adaptive implicit/CN, enable CFL-based dt recomputation
-        # so the surface boundary condition is evaluated at the same fine
-        # cadence as the explicit solver (eliminates splitting artifacts).
-        if config.solver != "explicit" and not self._adaptive:
+        # For implicit/CN, use CFL-based dt so the diurnal wave is
+        # resolved at the same temporal cadence as the explicit solver.
+        if config.solver != "explicit":
             self._output_cfl = True
         self.dt = self.dtout
-        if self._adaptive:
-            self._adaptive_dt = self.dt
         self.t = 0.0
         # Update phase reference so h(0) = 0 at the start of output.
         # The orbit (M, nu, r, dec) continues smoothly from equilibration.

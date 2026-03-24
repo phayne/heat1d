@@ -1,7 +1,7 @@
 """Parameter input panel for heat1d GUI."""
 
 import numpy as np
-import planets as planets_pkg
+from heat1d import planets as planets_pkg
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -245,10 +245,23 @@ class ParameterPanel(QWidget):
         self.output_dt_spin.setValue(0.10)
         form.addRow("Output res:", self.output_dt_spin)
 
-        self.nyearseq_spin = QSpinBox()
-        self.nyearseq_spin.setRange(1, 50)
-        self.nyearseq_spin.setValue(1)
-        form.addRow("Equil. years:", self.nyearseq_spin)
+        self.nyearseq_spin = QDoubleSpinBox()
+        self.nyearseq_spin.setRange(0.1, 500)
+        self.nyearseq_spin.setDecimals(1)
+        self.nyearseq_spin.setSingleStep(1)
+        self.nyearseq_spin.setValue(1.0)
+
+        self.equil_unit_combo = QComboBox()
+        self.equil_unit_combo.addItems(["auto", "orbits", "synodic days", "Earth days"])
+        self.equil_unit_combo.currentTextChanged.connect(self._on_equil_unit_changed)
+
+        equil_row = QHBoxLayout()
+        equil_row.addWidget(self.nyearseq_spin)
+        equil_row.addWidget(self.equil_unit_combo)
+        form.addRow("Equilibration:", equil_row)
+
+        # Auto mode: disable the spinbox since the value is ignored
+        self.nyearseq_spin.setEnabled(False)
 
         layout.addLayout(form)
         layout.addStretch()
@@ -411,6 +424,9 @@ class ParameterPanel(QWidget):
                 moon_val = getattr(moon, key, None)
                 if moon_val is not None:
                     spin.setValue(moon_val)
+
+    def _on_equil_unit_changed(self, text):
+        self.nyearseq_spin.setEnabled(text != "auto")
 
     def _on_thermo_auto_toggled(self, auto):
         for spin in self._thermo_spins.values():
@@ -621,13 +637,31 @@ class ParameterPanel(QWidget):
             for key, spin in self._thermo_spins.items():
                 thermo[key] = spin.value()
 
+        # Convert equilibration value + unit to integer orbits
+        equil_unit = self.equil_unit_combo.currentText()
+        planet_name = self.planet_combo.currentText()
+        if equil_unit == "auto":
+            nyearseq = 0
+        elif equil_unit == "orbits":
+            nyearseq = max(1, round(self.nyearseq_spin.value()))
+        else:
+            equil_val = self.nyearseq_spin.value()
+            planet_obj = getattr(planets_pkg, planet_name, None)
+            if planet_obj is not None and planet_obj.year:
+                if equil_unit == "synodic days":
+                    nyearseq = max(1, round(equil_val * planet_obj.day / planet_obj.year))
+                else:  # Earth days
+                    nyearseq = max(1, round(equil_val * 86400.0 / planet_obj.year))
+            else:
+                nyearseq = max(1, round(equil_val))
+
         params = {
-            "planet_name": self.planet_combo.currentText(),
+            "planet_name": planet_name,
             "lat_deg": self.lat_spin.value(),
             "solver": self.solver_combo.currentText(),
             "ndays": self.ndays_spin.value(),
             "output_dt_hr": self.output_dt_spin.value(),
-            "nyearseq": self.nyearseq_spin.value(),
+            "nyearseq": nyearseq,
             # Thermophysical
             "thermo_auto": thermo_auto,
             "thermo": thermo,
@@ -724,7 +758,11 @@ class ParameterPanel(QWidget):
 
         # Solver
         self.solver_combo.setCurrentText(config.solver)
-        self.nyearseq_spin.setValue(config.NYEARSEQ)
+        if config.NYEARSEQ == 0:
+            self.equil_unit_combo.setCurrentText("auto")
+        else:
+            self.equil_unit_combo.setCurrentText("orbits")
+            self.nyearseq_spin.setValue(config.NYEARSEQ)
         self.m_spin.setValue(config.m)
         self.n_spin.setValue(config.n)
         self.b_spin.setValue(config.b)
@@ -736,7 +774,7 @@ class ParameterPanel(QWidget):
             self.adaptive_check.setChecked(False)
 
         if config.output_interval is not None:
-            import planets as pkg
+            from heat1d import planets as pkg
             pname = self.planet_combo.currentText()
             planet = getattr(pkg, pname, None)
             if planet:

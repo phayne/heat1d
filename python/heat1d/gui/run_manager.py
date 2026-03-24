@@ -6,12 +6,16 @@ from datetime import datetime
 import numpy as np
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMenu,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -50,6 +54,37 @@ class RunRecord:
     def T_mean(self):
         return float(self.model.T[:, 0].mean()) if self.model is not None else 0.0
 
+    def thermal_inertia_summary(self):
+        """Compute thermal inertia min/mean/max at surface and bottom.
+
+        Returns dict with keys "Surface" and "Bottom", each mapping to
+        {"min": float, "mean": float, "max": float} in J m-2 K-1 s-1/2.
+        """
+        if self.model is None:
+            return None
+        from ..properties import heatCapacity, thermCond
+
+        profile = self.model.profile
+        R350 = profile.R350
+
+        result = {}
+        for label, idx in [("Surface", 0), ("Bottom", -1)]:
+            T_series = self.model.T[:, idx]
+            kc_val = profile.kc[idx]
+            rho_val = profile.rho[idx]
+
+            k = thermCond(kc_val, T_series, R350)
+            cp = heatCapacity(profile.planet, T_series,
+                              model=profile.config.cp_model)
+            ti = np.sqrt(k * rho_val * cp)
+
+            result[label] = {
+                "min": float(ti.min()),
+                "mean": float(ti.mean()),
+                "max": float(ti.max()),
+            }
+        return result
+
 
 class RunManagerWidget(QWidget):
     """Widget that displays completed runs and allows comparison selection."""
@@ -75,6 +110,22 @@ class RunManagerWidget(QWidget):
         self.list_widget.customContextMenuRequested.connect(self._context_menu)
         self.list_widget.itemClicked.connect(self._on_item_clicked)
         layout.addWidget(self.list_widget)
+
+        # Thermal inertia summary table
+        ti_label = QLabel("Thermal Inertia (J m\u207b\u00b2 K\u207b\u00b9 s\u207b\u00bd)")
+        ti_label.setStyleSheet("font-weight: bold; margin-top: 4px;")
+        layout.addWidget(ti_label)
+
+        self.ti_table = QTableWidget(2, 3)
+        self.ti_table.setHorizontalHeaderLabels(["Min", "Mean", "Max"])
+        self.ti_table.setVerticalHeaderLabels(["Surface", "Bottom"])
+        self.ti_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.ti_table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.ti_table.verticalHeader().setDefaultSectionSize(22)
+        self.ti_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.ti_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self.ti_table.setFixedHeight(76)
+        layout.addWidget(self.ti_table)
 
         btn_row = QHBoxLayout()
         self.compare_btn = QPushButton("Compare Selected")
@@ -110,6 +161,7 @@ class RunManagerWidget(QWidget):
 
         # Auto-select the new run for display
         self.list_widget.setCurrentItem(item)
+        self._update_ti_table(record)
         self.run_selected.emit(record)
 
     def get_checked_runs(self):
@@ -135,7 +187,21 @@ class RunManagerWidget(QWidget):
         run_id = item.data(Qt.UserRole)
         record = self.get_run_by_id(run_id)
         if record:
+            self._update_ti_table(record)
             self.run_selected.emit(record)
+
+    def _update_ti_table(self, record):
+        """Populate the thermal inertia table from a RunRecord."""
+        summary = record.thermal_inertia_summary()
+        if summary is None:
+            self.ti_table.clearContents()
+            return
+        for row, label in enumerate(["Surface", "Bottom"]):
+            for col, stat in enumerate(["min", "mean", "max"]):
+                val = summary[label][stat]
+                item = QTableWidgetItem(f"{val:.1f}")
+                item.setTextAlignment(Qt.AlignCenter)
+                self.ti_table.setItem(row, col, item)
 
     def _on_compare(self):
         checked = self.get_checked_runs()

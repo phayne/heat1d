@@ -6,7 +6,7 @@ and delegates temperature updates to the appropriate solver.
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-import planets
+from . import planets
 
 from .boundary import botTemp, surfTemp
 from .config import Configurator, R350

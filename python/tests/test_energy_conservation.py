@@ -8,7 +8,7 @@ a complete diurnal cycle.
 import copy
 
 import numpy as np
-import planets
+from heat1d import planets
 import pytest
 
 from heat1d.boundary import botTemp, surfTemp
@@ -32,7 +32,7 @@ def solver_name(request):
 def equilibrated_model():
     """Equator model equilibrated for 5 orbits (explicit solver)."""
     config = Configurator(solver="explicit", equil_solver="implicit",
-                          NYEARSEQ=5, equil_dt=planets.Moon.day / 480)
+                          NYEARSEQ=5)
     model = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
     model.run()
     return model

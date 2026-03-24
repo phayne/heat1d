@@ -120,7 +120,7 @@ class SimulationWorker(QThread):
 
         # Resolve planet
         self.progress.emit("Resolving planet...")
-        import planets as planets_pkg
+        from heat1d import planets as planets_pkg
         planet = getattr(planets_pkg, planet_name, None)
         if planet is None:
             self.error.emit(f"Unknown planet: {planet_name}")
@@ -259,6 +259,9 @@ class SimulationWorker(QThread):
             psr_d_D=psr_d_D,
         )
         model.run()
+
+        if hasattr(model, '_equil_orbits'):
+            self.progress.emit(f"Equilibrated in {model._equil_orbits} orbits")
 
         # Build label
         label = f"{planet_name} {lat_deg:.1f}N"

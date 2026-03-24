@@ -1,7 +1,7 @@
 """Shared pytest fixtures for heat1d tests."""
 
 import numpy as np
-import planets
+from heat1d import planets
 import pytest
 
 from heat1d.config import Configurator

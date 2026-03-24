@@ -27,7 +27,7 @@ class Configurator:
     b: int = 20  # Number of skin depths to bottom layer [default: 20]
     # Accuracy of temperature calculations
     DTSURF: float = 0.1  # surface temperature accuracy [K]
-    NYEARSEQ: int = 1  # equilibration time [orbits]
+    NYEARSEQ: int = 0  # equilibration time [orbits]; 0 = auto (converge to DTBOT)
     DTBOT: float = 0.1  # bottom layer temperature accuracy [K]
     # Adaptive timestepping (implicit/CN solvers only)
     adaptive_tol: float = 1.0  # [K] step-doubling error tolerance; None = fixed dt

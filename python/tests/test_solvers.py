@@ -1,7 +1,7 @@
 """Tests for the solvers module."""
 
 import numpy as np
-import planets
+from heat1d import planets
 import pytest
 
 from heat1d.config import Configurator
@@ -64,9 +64,9 @@ class TestExplicitSolver:
         m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
         m.run()
         # Regression values with angle-dependent albedo (A_h=0.12), n=4 grid
-        # (implicit equilibration; ref 385 +/- 5 K)
-        np.testing.assert_allclose(m.T[:, 0].max(), 388.53, atol=0.5)
-        np.testing.assert_allclose(m.T[:, 0].min(), 92.46, atol=0.5)
+        # (auto equilibration ~7 orbits; ref 385 +/- 5 K)
+        np.testing.assert_allclose(m.T[:, 0].max(), 388.42, atol=0.5)
+        np.testing.assert_allclose(m.T[:, 0].min(), 91.88, atol=0.5)
 
 
 class TestSolverConsistency:
@@ -213,26 +213,23 @@ class TestAdaptiveTimestepping:
             f"Adaptive vs explicit = {err_ada:.1f} K (expected < 5 K)"
         )
 
-    def test_adaptive_tighter_tolerance_more_accurate(self):
-        """Tighter adaptive_tol produces results closer to high-resolution."""
+    def test_adaptive_implicit_matches_explicit_in_output(self):
+        """Adaptive implicit uses CFL dt during output, matching explicit."""
         config_ref = Configurator(solver="explicit",
                                   output_interval=DAY / 480)
         m_ref = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config_ref)
         m_ref.run()
 
-        errors = {}
-        for tol in [5.0, 0.5]:
-            config = Configurator(solver="implicit",
-                                  adaptive_tol=tol,
-                                  output_interval=DAY / 480)
-            m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
-            m.run()
-            T_interp = np.interp(m_ref.lt, m.lt, m.T[:, 0])
-            errors[tol] = np.max(np.abs(T_interp - m_ref.T[:, 0]))
+        config = Configurator(solver="implicit",
+                              adaptive_tol=1.0,
+                              output_interval=DAY / 480)
+        m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
+        m.run()
+        T_interp = np.interp(m_ref.lt, m.lt, m.T[:, 0])
+        err = np.max(np.abs(T_interp - m_ref.T[:, 0]))
 
-        assert errors[0.5] < errors[5.0], (
-            f"Tighter tolerance should be more accurate: "
-            f"err(0.5K)={errors[0.5]:.2f}, err(5.0K)={errors[5.0]:.2f}"
+        assert err < 3.0, (
+            f"Implicit with CFL should closely match explicit: max err={err:.2f} K"
         )
 
     def test_adaptive_not_enabled_for_explicit(self):

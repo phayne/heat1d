@@ -175,7 +175,7 @@ class TestPSRFlux:
 class TestPSRModel:
     def test_psr_gives_cold_temperature(self):
         """PSR crater at high latitude should produce much colder temperatures."""
-        import planets
+        from heat1d import planets
         from heat1d.config import Configurator
         from heat1d.model import Model
 
@@ -210,7 +210,7 @@ class TestPSRModel:
     def test_psr_warning_at_equator(self):
         """PSR at equator should produce a warning."""
         import warnings
-        import planets
+        from heat1d import planets
         from heat1d.config import Configurator
         from heat1d.model import Model
 

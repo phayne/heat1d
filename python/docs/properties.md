@@ -105,7 +105,7 @@ To use the Biele model:
 
 ```python
 from heat1d import Configurator, Model
-import planets
+from heat1d import planets
 
 config = Configurator(cp_model="biele2022")
 m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)

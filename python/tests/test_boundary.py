@@ -1,7 +1,7 @@
 """Tests for the boundary condition module."""
 
 import numpy as np
-import planets
+from heat1d import planets
 import pytest
 
 from heat1d.boundary import botTemp, surfTemp, _volterra_predictor_python
