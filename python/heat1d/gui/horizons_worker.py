@@ -83,8 +83,9 @@ def _parse_search_result(result_text):
 
     # Case: multiple matches — look for disambiguation table
     # Handles both "Multiple major-bodies match" and "Multiple small-bodies match"
-    if "Multiple major-bodies match" in result_text \
-       or "Multiple small-bodies match" in result_text \
+    is_small_body_list = "Multiple small-bodies match" in result_text
+    if is_small_body_list \
+       or "Multiple major-bodies match" in result_text \
        or "Multiple matches" in result_text:
         results = []
         in_table = False
@@ -106,8 +107,16 @@ def _parse_search_result(result_text):
                 parts = stripped.split(None, 1)
                 if len(parts) >= 2:
                     try:
-                        int(parts[0])
-                        results.append((parts[0], parts[1].strip()))
+                        raw_id = int(parts[0])
+                        # Small body catalog numbers → NAIF IDs to avoid
+                        # collision with satellite ID range (100-999)
+                        if is_small_body_list:
+                            body_id = str(2000000 + raw_id)
+                            display = parts[1].strip() + " [small body]"
+                        else:
+                            body_id = parts[0]
+                            display = parts[1].strip()
+                        results.append((body_id, display))
                     except ValueError:
                         pass
         return results
@@ -151,9 +160,12 @@ def _parse_search_result(result_text):
         if "Rec #:" in line:
             m = re.search(r'Rec #:\s*(-?\d+)', line)
             if m:
-                body_id = m.group(1)
+                catalog_num = int(m.group(1))
+                # Convert catalog number to NAIF ID to avoid collision
+                # with satellite ID range (100-999)
+                body_id = str(2000000 + catalog_num)
                 # Extract name from JPL/HORIZONS header line
-                name_part = body_id
+                name_part = str(catalog_num)
                 for hline in lines:
                     if "JPL/HORIZONS" in hline:
                         # "JPL/HORIZONS  269 Justitia (A887 SA)  2026-Feb-16 ..."
