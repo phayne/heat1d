@@ -91,6 +91,16 @@ class Planet:
         self.Tsavg = None  # Mean surface temperature
         self.Tsmax = None  # Maximum surface temperature
 
+        self.shape = None  # Triaxial ellipsoid (a, b, c) [m]; None = sphere
+
+    @property
+    def ellipsoid_axes(self):
+        """Return (a, b, c) semi-axes [m], defaulting to sphere of radius R."""
+        if self.shape is not None:
+            return self.shape
+        r = self.R if self.R else 1.0
+        return (r, r, r)
+
     def Teq(self, latitude=0):
         F = self.S
         A = self.albedo

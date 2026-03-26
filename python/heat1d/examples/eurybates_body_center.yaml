@@ -1,0 +1,24 @@
+# Example: Eurybates with body-center Horizons query
+#
+# Eurybates is a Lucy mission target (Trojan asteroid) that lacks a
+# rotational model in JPL Horizons.  The body_center option queries the
+# Sun's position from the body center and computes local solar angles
+# analytically using the rotation parameters from planets.py.
+#
+# Usage:
+#   heat1d eurybates_body_center.yaml
+
+planet:
+  name: "Eurybates"
+  # shape: [34650, 34650, 25000]  # [a, b, c] in meters (optional triaxial)
+
+latitude: 0.0
+ndays: 1
+solver: "implicit"
+
+horizons:
+  enabled: true
+  body_center: true
+  body_id: "2003548"
+  lon: 0.0
+  start_time: "2027-08-12 00:00"

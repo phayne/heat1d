@@ -107,6 +107,7 @@ class SimulationWorker(QThread):
         body_id = p.get("body_id")
         eclipses = p.get("eclipses", True)
         parent_body_id = p.get("parent_body_id")
+        body_center = p.get("body_center", False)
 
         # Custom depth profile layers
         custom_layers = p.get("custom_layers")
@@ -222,6 +223,7 @@ class SimulationWorker(QThread):
                     planet=planet,
                     eclipses=eclipses,
                     parent_body_id=parent_body_id if parent_body_id else None,
+                    body_center=body_center,
                 )
                 metadata = spice_meta
                 if flux_dt > 0:

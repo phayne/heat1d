@@ -96,6 +96,8 @@ def _resolve_planet(name, overrides):
               help="Horizons ID of parent body for eclipse detection (e.g. '399' for Earth).")
 @click.option("--psr-d-D", "psr_d_D", type=float, default=None,
               help="PSR crater depth/diameter ratio (e.g. 0.2). Enables bowl-shaped crater PSR mode.")
+@click.option("--body-center", "body_center", is_flag=True,
+              help="Force body-center Horizons query (for bodies without rotational models).")
 def main(
     config_file,
     lat,
@@ -124,6 +126,7 @@ def main(
     no_eclipses,
     parent_body_id,
     psr_d_D,
+    body_center,
 ):
     """Run the heat1d 1-D thermal model.
 
@@ -206,6 +209,15 @@ def main(
         for key in ("albedo", "emissivity", "ks", "kd", "rhos", "rhod", "H", "cp0", "Qb"):
             if key in planet_cfg:
                 planet_overrides[key] = planet_cfg[key]
+        # Triaxial shape override
+        planet_shape = planet_cfg.get("shape")
+        if planet_shape is not None:
+            if isinstance(planet_shape, (list, tuple)) and len(planet_shape) == 3:
+                planet_overrides["shape"] = tuple(planet_shape)
+            else:
+                raise click.ClickException(
+                    "planet.shape must be a list of 3 values [a, b, c] in meters"
+                )
     # CLI albedo override takes precedence
     if albedo is not None:
         planet_overrides["albedo"] = albedo
@@ -236,6 +248,9 @@ def main(
             parent_body_id = eclipses_cfg.get("parent_body_id")
         if not no_eclipses and eclipses_cfg.get("enabled") is False:
             no_eclipses = True
+        # Body-center option from YAML (CLI flag overrides)
+        if not body_center and horizons_cfg.get("body_center", False):
+            body_center = True
 
     flux_series = None
     flux_dt = None
@@ -274,12 +289,15 @@ def main(
                 planet=planet,
                 eclipses=not no_eclipses,
                 parent_body_id=parent_body_id,
+                body_center=body_center,
             )
         except HorizonsError as exc:
             raise click.ClickException(f"Horizons query failed: {exc}")
 
         if not quiet:
-            click.echo(f"  Horizons: body={spice_meta['body_id']}, "
+            mode = spice_meta.get("mode", "surface_observer")
+            mode_label = "body-center" if mode == "body_center" else "surface"
+            click.echo(f"  Horizons: body={spice_meta['body_id']} ({mode_label}), "
                        f"{spice_meta['n_samples']} samples, dt={flux_dt:.0f} s")
             click.echo(f"  UTC:      {start_time} → {computed_stop}")
             einfo = spice_meta.get("eclipse_info")

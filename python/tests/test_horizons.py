@@ -618,3 +618,271 @@ class TestWestPositiveIntegration:
             step_size="6h",
         )
         assert _west_positive_cache.get("301") is False
+
+
+# ---------------------------------------------------------------------------
+# Body-center query tests
+# ---------------------------------------------------------------------------
+
+# Canned response for QUANTITIES='31,20' (ecliptic lon/lat + range)
+SAMPLE_RESPONSE_BODY_CENTER = """\
+*******************************************************************************
+Ephemeris / API_USER Mon Feb 16 17:28:00 2026 Pasadena, USA      / Horizons
+*******************************************************************************
+Target body name: Sun (10)                        {source: DE441}
+Center body name: (52246) Donaldjohanson           {source: JPL#96}
+*******************************************************************************
+ Date__(UT)__HR:MN, , ,ObsEcLon,ObsEcLat,            delta,
+********************************************************************
+$$SOE
+ 2028-Mar-01 00:00, , ,    0.000000,     0.150000,  2.06500000000000,
+ 2028-Mar-01 06:00, , ,    0.150000,     0.150000,  2.06510000000000,
+ 2028-Mar-01 12:00, , ,    0.300000,     0.150000,  2.06520000000000,
+ 2028-Mar-01 18:00, , ,    0.450000,     0.150000,  2.06530000000000,
+ 2028-Mar-02 00:00, , ,    0.600000,     0.150000,  2.06540000000000,
+$$EOE
+*******************************************************************************
+"""
+
+
+class TestParseBodyCenterResponse:
+    """Tests for parsing body-center QUANTITIES='31,20' responses."""
+
+    def test_parse_body_center_quantities(self):
+        """Parser extracts ecliptic lon/lat and range."""
+        result = _parse_horizons_response(SAMPLE_RESPONSE_BODY_CENTER,
+                                          quantities="31,20")
+        assert result["n_samples"] == 5
+        np.testing.assert_allclose(result["sun_ecl_lon_deg"][0], 0.0)
+        np.testing.assert_allclose(result["sun_ecl_lat_deg"][0], 0.15)
+        np.testing.assert_allclose(result["observer_range_au"][0], 2.065,
+                                   rtol=1e-5)
+
+    def test_body_center_dt(self):
+        """dt is computed from body-center timestamps."""
+        result = _parse_horizons_response(SAMPLE_RESPONSE_BODY_CENTER,
+                                          quantities="31,20")
+        assert result["dt_seconds"] == 6 * 3600  # 6 hours
+
+    def test_body_center_times(self):
+        """UTC timestamps are extracted correctly."""
+        result = _parse_horizons_response(SAMPLE_RESPONSE_BODY_CENTER,
+                                          quantities="31,20")
+        assert result["times_utc"][0] == "2028-Mar-01 00:00"
+
+
+class TestBodyCenterToFlux:
+    """Tests for body_center_to_flux function."""
+
+    def test_subsolar_sphere_equator(self):
+        """Subsolar point on equator of spherical body gives peak flux."""
+        from heat1d.horizons import body_center_to_flux
+
+        moon = planets.Moon
+        # Sun at ecliptic lon=0, directly overhead at equator
+        ecl_lon = np.array([0.0])
+        ecl_lat = np.array([0.0])
+        r = np.array([moon.rAU])
+        times = ["2024-Jun-15 00:00"]
+
+        flux = body_center_to_flux(ecl_lon, ecl_lat, r, times,
+                                   moon, lat_deg=0.0, lon_deg=0.0)
+        expected = moon.S * (1.0 - moon.albedo)
+        # Should be close to peak (small tolerance for albedo model)
+        assert flux[0] > 0.9 * expected
+
+    def test_midnight_zero_flux(self):
+        """Anti-solar point produces zero flux."""
+        from heat1d.horizons import body_center_to_flux
+
+        moon = planets.Moon
+        # Sun at ecliptic lon=0, observer at lon=180 (midnight)
+        ecl_lon = np.array([0.0])
+        ecl_lat = np.array([0.0])
+        r = np.array([moon.rAU])
+        times = ["2024-Jun-15 00:00"]
+
+        flux = body_center_to_flux(ecl_lon, ecl_lat, r, times,
+                                   moon, lat_deg=0.0, lon_deg=180.0)
+        assert flux[0] == 0.0
+
+    def test_inverse_square_scaling(self):
+        """Flux scales with 1/r² for body-center path."""
+        from heat1d.horizons import body_center_to_flux
+
+        moon = planets.Moon
+        ecl_lon = np.array([0.0, 0.0])
+        ecl_lat = np.array([0.0, 0.0])
+        r = np.array([1.0, 2.0])
+        times = ["2024-Jun-15 00:00", "2024-Jun-15 00:00"]
+
+        flux = body_center_to_flux(ecl_lon, ecl_lat, r, times,
+                                   moon, lat_deg=0.0, lon_deg=0.0)
+        np.testing.assert_allclose(flux[1] / flux[0],
+                                   (1.0 / 2.0) ** 2, rtol=0.01)
+
+    def test_no_negative_flux(self):
+        """Flux is never negative."""
+        from heat1d.horizons import body_center_to_flux
+
+        moon = planets.Moon
+        n = 24
+        ecl_lon = np.linspace(0, 360, n)
+        ecl_lat = np.zeros(n)
+        r = np.full(n, moon.rAU)
+        times = [f"2024-Jun-15 {i:02d}:00" for i in range(n)]
+
+        flux = body_center_to_flux(ecl_lon, ecl_lat, r, times,
+                                   moon, lat_deg=45.0, lon_deg=90.0)
+        assert np.all(flux >= 0)
+
+
+class TestEllipsoidNormal:
+    """Tests for _ellipsoid_normal function."""
+
+    def test_sphere_normal_is_radial(self):
+        """On a sphere, normal matches the position direction."""
+        from heat1d.horizons import _ellipsoid_normal
+
+        lat = np.deg2rad(30.0)
+        lon = np.deg2rad(45.0)
+        nx, ny, nz = _ellipsoid_normal(lat, lon, 1.0, 1.0, 1.0)
+
+        # Should match (cos(lat)*cos(lon), cos(lat)*sin(lon), sin(lat))
+        np.testing.assert_allclose(nx, np.cos(lat) * np.cos(lon), atol=1e-12)
+        np.testing.assert_allclose(ny, np.cos(lat) * np.sin(lon), atol=1e-12)
+        np.testing.assert_allclose(nz, np.sin(lat), atol=1e-12)
+
+    def test_oblate_pole_normal(self):
+        """At the pole of any ellipsoid, normal is (0, 0, 1)."""
+        from heat1d.horizons import _ellipsoid_normal
+
+        nx, ny, nz = _ellipsoid_normal(np.pi / 2, 0.0, 100.0, 50.0, 30.0)
+        np.testing.assert_allclose(nx, 0.0, atol=1e-12)
+        np.testing.assert_allclose(ny, 0.0, atol=1e-12)
+        np.testing.assert_allclose(nz, 1.0, atol=1e-12)
+
+    def test_ellipsoid_equator_x_axis(self):
+        """At equator lon=0, normal tilts toward shorter axes."""
+        from heat1d.horizons import _ellipsoid_normal
+
+        # a=2, b=1, c=1 — oblate-ish in equatorial plane
+        nx, ny, nz = _ellipsoid_normal(0.0, 0.0, 2.0, 1.0, 1.0)
+        # Normal should be along x but tilted (nx < 1 for sphere)
+        assert nx > 0
+        np.testing.assert_allclose(ny, 0.0, atol=1e-12)
+        np.testing.assert_allclose(nz, 0.0, atol=1e-12)
+        # For a=2, nx = 1/a² / (1/a²) = 1 (still unit, only x component)
+        np.testing.assert_allclose(nx, 1.0, atol=1e-12)
+
+    def test_normal_is_unit_vector(self):
+        """Normal vector has unit magnitude for arbitrary ellipsoid."""
+        from heat1d.horizons import _ellipsoid_normal
+
+        lats = np.deg2rad([0, 30, 60, 90])
+        lons = np.deg2rad([0, 45, 90, 135])
+        for lat in lats:
+            for lon in lons:
+                nx, ny, nz = _ellipsoid_normal(lat, lon, 3.0, 2.0, 1.5)
+                mag = np.sqrt(nx**2 + ny**2 + nz**2)
+                np.testing.assert_allclose(mag, 1.0, atol=1e-12)
+
+
+class TestAutoFallback:
+    """Tests for auto-fallback from surface to body-center query."""
+
+    def test_fallback_on_no_rotational_model(self, monkeypatch):
+        """fetch_solar_flux falls back when 'No rotational model' error."""
+        from heat1d.horizons import fetch_solar_flux, HorizonsError
+
+        def mock_query_horizons(*args, **kwargs):
+            raise HorizonsError(
+                "Horizons returned an error: No rotational model for center body."
+            )
+
+        def mock_query_body_center(*args, **kwargs):
+            return {
+                "sun_ecl_lon_deg": np.array([0.0, 90.0]),
+                "sun_ecl_lat_deg": np.array([0.0, 0.0]),
+                "observer_range_au": np.array([2.065, 2.065]),
+                "times_utc": ["2028-Mar-01 00:00", "2028-Mar-01 06:00"],
+                "dt_seconds": 21600.0,
+                "n_samples": 2,
+            }
+
+        import heat1d.horizons as h_mod
+        monkeypatch.setattr(h_mod, "query_horizons", mock_query_horizons)
+        monkeypatch.setattr(h_mod, "query_horizons_body_center",
+                            mock_query_body_center)
+
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            flux, dt, meta = fetch_solar_flux(
+                planet_name="Donaldjohanson",
+                lon_deg=0.0, lat_deg=0.0,
+                start_time="2028-03-01 00:00",
+                stop_time="2028-03-02 00:00",
+                body_center=False,
+            )
+
+        assert meta["mode"] == "body_center"
+        assert len(flux) == 2
+        assert len(w) == 1
+        assert "Falling back" in str(w[0].message)
+
+    def test_forced_body_center(self, monkeypatch):
+        """body_center=True skips surface query entirely."""
+        from heat1d.horizons import fetch_solar_flux
+
+        call_log = []
+
+        def mock_query_horizons(*args, **kwargs):
+            call_log.append("surface")
+            return {}
+
+        def mock_query_body_center(*args, **kwargs):
+            call_log.append("body_center")
+            return {
+                "sun_ecl_lon_deg": np.array([0.0]),
+                "sun_ecl_lat_deg": np.array([0.0]),
+                "observer_range_au": np.array([2.065]),
+                "times_utc": ["2028-Mar-01 00:00"],
+                "dt_seconds": 0.0,
+                "n_samples": 1,
+            }
+
+        import heat1d.horizons as h_mod
+        monkeypatch.setattr(h_mod, "query_horizons", mock_query_horizons)
+        monkeypatch.setattr(h_mod, "query_horizons_body_center",
+                            mock_query_body_center)
+
+        flux, dt, meta = fetch_solar_flux(
+            planet_name="Donaldjohanson",
+            lon_deg=0.0, lat_deg=0.0,
+            start_time="2028-03-01 00:00",
+            stop_time="2028-03-02 00:00",
+            body_center=True,
+        )
+
+        assert "surface" not in call_log
+        assert "body_center" in call_log
+        assert meta["mode"] == "body_center"
+
+    def test_non_rotation_error_still_raises(self, monkeypatch):
+        """Non-rotation errors are not caught by fallback."""
+        from heat1d.horizons import fetch_solar_flux, HorizonsError
+
+        def mock_query_horizons(*args, **kwargs):
+            raise HorizonsError("Cannot reach Horizons API: timeout")
+
+        import heat1d.horizons as h_mod
+        monkeypatch.setattr(h_mod, "query_horizons", mock_query_horizons)
+
+        with pytest.raises(HorizonsError, match="timeout"):
+            fetch_solar_flux(
+                planet_name="Moon",
+                lon_deg=0.0, lat_deg=0.0,
+                start_time="2024-06-15 00:00",
+                stop_time="2024-06-16 00:00",
+            )

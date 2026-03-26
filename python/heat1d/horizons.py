@@ -14,6 +14,7 @@ Uses only the Python standard library (``urllib``, ``json``).
 
 import json
 import math
+import warnings
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -340,6 +341,10 @@ def _parse_horizons_response(result_text, quantities="4,20"):
             "min_cols": 4,
             "ang_diam": 3,
         },
+        "31,20": {
+            "min_cols": 6,
+            "obs_ecl_lon": 3, "obs_ecl_lat": 4, "delta": 5,
+        },
     }
 
     col_map = COLUMN_MAPS.get(quantities)
@@ -415,6 +420,8 @@ def _parse_horizons_response(result_text, quantities="4,20"):
         "toi": "toi_deg",
         "ib_illu_pct": "ib_illu_pct",
         "ang_diam": "ang_diam_arcsec",
+        "obs_ecl_lon": "sun_ecl_lon_deg",
+        "obs_ecl_lat": "sun_ecl_lat_deg",
     }
 
     for key, values in columns.items():
@@ -490,6 +497,241 @@ def horizons_to_flux(solar_elevation_deg, observer_range_au, planet):
 
     # Ensure no negative flux from numerical edge cases
     flux[night] = 0.0
+
+    return flux
+
+
+# ---------------------------------------------------------------------------
+# Body-center query (no rotational model required)
+# ---------------------------------------------------------------------------
+
+def _horizons_request_body_center(body_id, start_time, stop_time,
+                                  step_size, timeout, command="10"):
+    """Make a Horizons API request with the body center as observer.
+
+    Unlike :func:`_horizons_request`, this does **not** use ``coord@`` or
+    surface coordinates, so it works for bodies without a rotational model
+    in the Horizons database.
+
+    Parameters
+    ----------
+    body_id : str
+        Horizons body ID for the observer body.
+    start_time, stop_time : str
+        UTC time strings.
+    step_size : str
+        Horizons step size (e.g. ``"10m"``).
+    timeout : int
+        HTTP timeout [seconds].
+    command : str
+        Target body (default ``"10"`` = Sun).
+
+    Returns
+    -------
+    str
+        Raw Horizons result text.
+    """
+    params = {
+        "format": "json",
+        "COMMAND": f"'{command}'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'OBSERVER'",
+        "CENTER": f"'{body_id}'",
+        "START_TIME": f"'{start_time}'",
+        "STOP_TIME": f"'{stop_time}'",
+        "STEP_SIZE": f"'{step_size}'",
+        "QUANTITIES": "'31,20'",
+        "CSV_FORMAT": "'YES'",
+        "SUPPRESS_RANGE_RATE": "'YES'",
+        "APPARENT": "'AIRLESS'",
+    }
+
+    url = HORIZONS_API_URL + "?" + urllib.parse.urlencode(params)
+
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib.error.URLError as exc:
+        raise HorizonsError(f"Cannot reach Horizons API: {exc}") from exc
+    except Exception as exc:
+        raise HorizonsError(f"HTTP request failed: {exc}") from exc
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HorizonsError(f"Invalid JSON from Horizons: {exc}") from exc
+
+    result_text = data.get("result", "")
+    if not result_text:
+        raise HorizonsError("Empty result from Horizons API")
+
+    return result_text
+
+
+def query_horizons_body_center(body_id, start_time, stop_time,
+                               step_size="10m", timeout=60, command="10"):
+    """Query Horizons for the Sun's position from a body's center.
+
+    No rotational model is required.  Returns the Sun's ecliptic
+    longitude/latitude and distance, which can be combined with
+    user-supplied rotation parameters to compute local solar angles.
+
+    Parameters
+    ----------
+    body_id : str
+        Horizons body ID for the observer body.
+    start_time, stop_time : str
+        UTC time strings.
+    step_size : str
+        Horizons step size.
+    timeout : int
+        HTTP timeout [seconds].
+    command : str
+        Target body (default ``"10"`` = Sun).
+
+    Returns
+    -------
+    dict
+        Keys: ``sun_ecl_lon_deg``, ``sun_ecl_lat_deg``,
+        ``observer_range_au``, ``times_utc``, ``dt_seconds``,
+        ``n_samples``.
+    """
+    result_text = _horizons_request_body_center(
+        body_id, start_time, stop_time, step_size, timeout, command,
+    )
+    return _parse_horizons_response(result_text, quantities="31,20")
+
+
+def _ellipsoid_normal(lat_rad, lon_rad, a, b, c):
+    """Surface normal on a triaxial ellipsoid at parametric (lat, lon).
+
+    Parameters
+    ----------
+    lat_rad, lon_rad : float or np.ndarray
+        Parametric latitude and longitude [radians].
+    a, b, c : float
+        Semi-axes [m].  ``a`` along prime meridian (X), ``b`` along Y,
+        ``c`` along pole (Z).
+
+    Returns
+    -------
+    nx, ny, nz : float or np.ndarray
+        Unit normal components in the body-fixed frame.
+    """
+    cos_lat = np.cos(lat_rad)
+    sin_lat = np.sin(lat_rad)
+    cos_lon = np.cos(lon_rad)
+    sin_lon = np.sin(lon_rad)
+
+    # Gradient of x²/a² + y²/b² + z²/c² = 1
+    nx = cos_lat * cos_lon / (a * a)
+    ny = cos_lat * sin_lon / (b * b)
+    nz = sin_lat / (c * c)
+
+    mag = np.sqrt(nx * nx + ny * ny + nz * nz)
+    return nx / mag, ny / mag, nz / mag
+
+
+def body_center_to_flux(sun_ecl_lon_deg, sun_ecl_lat_deg,
+                        observer_range_au, times_utc,
+                        planet, lat_deg, lon_deg):
+    """Convert body-center Horizons data to absorbed surface flux.
+
+    Computes local solar incidence angle analytically from the body's
+    rotation parameters (period, obliquity) and the Sun's ecliptic
+    coordinates, then applies the standard albedo model and inverse-square
+    distance scaling.
+
+    For non-spherical bodies (``planet.shape`` is set), the surface normal
+    is computed on the triaxial ellipsoid rather than radially.
+
+    Parameters
+    ----------
+    sun_ecl_lon_deg : np.ndarray
+        Ecliptic longitude of the Sun from body center [degrees].
+    sun_ecl_lat_deg : np.ndarray
+        Ecliptic latitude of the Sun from body center [degrees].
+    observer_range_au : np.ndarray
+        Sun–body distance [AU].
+    times_utc : list[str]
+        UTC timestamps from Horizons response.
+    planet : object
+        Planet object (needs ``S``, ``albedo``, ``albedoCoef``, ``rAU``,
+        ``day``, ``year``, ``obliquity``).
+    lat_deg : float
+        Observer latitude on body surface [degrees].
+    lon_deg : float
+        Observer east longitude on body surface [degrees].
+
+    Returns
+    -------
+    flux : np.ndarray
+        Absorbed surface flux [W/m²].
+    """
+    from .orbits import siderealPeriod, cosSolarZenith
+
+    lambda_sun = np.deg2rad(np.asarray(sun_ecl_lon_deg, dtype=float))
+    r = np.asarray(observer_range_au, dtype=float)
+    obliq = planet.obliquity if planet.obliquity is not None else 0.0
+    lat_rad = np.deg2rad(lat_deg)
+    lon_rad = np.deg2rad(lon_deg)
+
+    # Solar declination from ecliptic longitude + obliquity
+    # Same as orbits.py:188 where (nu + Lp) = ecliptic longitude
+    dec = np.arcsin(np.sin(obliq) * np.sin(lambda_sun))
+
+    # Elapsed time from first sample
+    t0 = _parse_horizons_date(times_utc[0])
+    t_elapsed = np.array([
+        (_parse_horizons_date(ts) - t0).total_seconds()
+        for ts in times_utc
+    ])
+
+    # Hour angle from sidereal rotation + ecliptic sun position
+    P_sid = siderealPeriod(planet.day, planet.year)
+    TWOPI = 2.0 * np.pi
+    h = TWOPI * t_elapsed / P_sid + lon_rad - lambda_sun
+
+    # Check if body is ellipsoidal
+    shape = getattr(planet, "shape", None)
+    if shape is not None:
+        a, b, c_ax = shape
+        is_ellipsoid = not (np.isclose(a, b) and np.isclose(b, c_ax))
+    else:
+        is_ellipsoid = False
+
+    if is_ellipsoid:
+        # Sun direction in body-fixed frame
+        sx = np.cos(dec) * np.cos(h)
+        sy = -np.cos(dec) * np.sin(h)
+        sz = np.sin(dec)
+
+        # Surface normal on ellipsoid at observer location
+        nx, ny, nz = _ellipsoid_normal(lat_rad, lon_rad, a, b, c_ax)
+
+        cos_inc = sx * nx + sy * ny + sz * nz
+        cos_inc = np.maximum(cos_inc, 0.0)
+    else:
+        # Spherical body — use existing formula
+        cos_inc = cosSolarZenith(lat_rad, dec, h)
+
+    # Incidence angle for albedo model
+    inc = np.arccos(np.clip(cos_inc, 0.0, 1.0))
+
+    # Angle-dependent albedo
+    a_coef = planet.albedoCoef[0]
+    b_coef = planet.albedoCoef[1]
+    A_var = albedoVar(planet.albedo, a_coef, b_coef, inc)
+
+    # Absorbed flux with inverse-square scaling
+    f = (1.0 - A_var) / (1.0 - planet.albedo)
+    Sabs = planet.S * (1.0 - planet.albedo)
+    flux = f * Sabs * (planet.rAU / r) ** 2 * cos_inc
+
+    # Ensure no negative flux
+    flux = np.maximum(flux, 0.0)
 
     return flux
 
@@ -605,10 +847,48 @@ def apply_horizons_eclipses(flux, sun_result, parent_result):
 # Main entry point
 # ---------------------------------------------------------------------------
 
+def _fetch_body_center(bid, lat_deg, lon_deg, start_time, stop_time,
+                       step_str, dt, planet, timeout):
+    """Run the body-center query path and return (flux, dt, metadata)."""
+    result = query_horizons_body_center(
+        body_id=bid,
+        start_time=start_time,
+        stop_time=stop_time,
+        step_size=step_str,
+        timeout=timeout,
+    )
+
+    if result["dt_seconds"] > 0:
+        dt = result["dt_seconds"]
+
+    flux = body_center_to_flux(
+        result["sun_ecl_lon_deg"],
+        result["sun_ecl_lat_deg"],
+        result["observer_range_au"],
+        result["times_utc"],
+        planet,
+        lat_deg,
+        lon_deg,
+    )
+
+    metadata = {
+        "body_id": bid,
+        "n_samples": result["n_samples"],
+        "start_time": start_time,
+        "stop_time": stop_time,
+        "step_size": step_str,
+        "times_utc": result["times_utc"],
+        "eclipse_info": None,
+        "mode": "body_center",
+    }
+
+    return flux, dt, metadata
+
+
 def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
                      body_id=None, output_interval_s=None, planet_day_s=None,
                      planet=None, timeout=60, eclipses=True,
-                     parent_body_id=None):
+                     parent_body_id=None, body_center=False):
     """Query Horizons and return an absorbed-flux array ready for the Model.
 
     This is the primary entry point used by the CLI.
@@ -618,6 +898,13 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
     eclipse events.  Both the Sun query and the parent-body query use
     the same observer latitude/longitude, so the eclipse fraction
     correctly depends on the surface position.
+
+    When *body_center* is ``True``, uses a body-center Horizons query
+    (no rotational model required) and computes local solar angles
+    analytically from the body's rotation parameters and optional
+    ellipsoidal shape.  If ``False`` (default), tries the surface-point
+    query first and falls back to body-center automatically if the body
+    lacks a rotational model in Horizons.
 
     Parameters
     ----------
@@ -647,6 +934,10 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
         If ``True`` (default), detect and apply eclipses for satellites.
     parent_body_id : str or None
         Explicit parent body ID override for eclipse detection.
+    body_center : bool
+        If ``True``, force body-center query mode (no rotational model
+        needed).  If ``False`` (default), try surface-point query first
+        and fall back to body-center on failure.
 
     Returns
     -------
@@ -655,7 +946,7 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
     dt : float
         Time spacing [seconds].
     metadata : dict
-        Query metadata including optional ``eclipse_info``.
+        Query metadata including optional ``eclipse_info`` and ``mode``.
 
     Raises
     ------
@@ -683,6 +974,15 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
         planet_day_s=planet_day_s or getattr(planet, "day", None),
     )
 
+    # ----- Body-center path (forced) -----
+    if body_center:
+        return _fetch_body_center(
+            bid, lat_deg, lon_deg, start_time, stop_time,
+            step_str, dt, planet, timeout,
+        )
+
+    # ----- Surface-point path (with auto-fallback) -----
+
     # Determine if eclipse detection applies
     detect_eclipses = eclipses and (
         is_satellite(bid) or parent_body_id is not None
@@ -693,17 +993,34 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
     else:
         quantities = "4,20"
 
-    # Query Horizons for Sun position
-    result = query_horizons(
-        body_id=bid,
-        lon_deg=lon_deg,
-        lat_deg=lat_deg,
-        start_time=start_time,
-        stop_time=stop_time,
-        step_size=step_str,
-        timeout=timeout,
-        quantities=quantities,
-    )
+    # Query Horizons for Sun position (surface observer)
+    try:
+        result = query_horizons(
+            body_id=bid,
+            lon_deg=lon_deg,
+            lat_deg=lat_deg,
+            start_time=start_time,
+            stop_time=stop_time,
+            step_size=step_str,
+            timeout=timeout,
+            quantities=quantities,
+        )
+    except HorizonsError as exc:
+        # Auto-fallback to body-center for bodies without rotation models
+        err_msg = str(exc)
+        if ("No rotational model" in err_msg
+                or "Cannot find central body" in err_msg
+                or "cannot be used as the center" in err_msg):
+            warnings.warn(
+                f"Surface observer not available for body '{bid}': {exc}. "
+                f"Falling back to body-center query with analytical rotation.",
+                stacklevel=2,
+            )
+            return _fetch_body_center(
+                bid, lat_deg, lon_deg, start_time, stop_time,
+                step_str, dt, planet, timeout,
+            )
+        raise
 
     # Use the actual dt from the response (in case of rounding)
     if result["dt_seconds"] > 0:
@@ -739,6 +1056,7 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
         "step_size": step_str,
         "times_utc": result["times_utc"],
         "eclipse_info": eclipse_info,
+        "mode": "surface_observer",
     }
 
     return flux, dt, metadata

@@ -179,6 +179,9 @@ class ParameterPanel(QWidget):
         self.parent_id_edit.setPlaceholderText("auto-detected")
         horizons_form.addRow("Parent body:", self.parent_id_edit)
 
+        self.body_center_check = QCheckBox("Body-center query (no rotation model needed)")
+        horizons_form.addRow("", self.body_center_check)
+
         self._horizons_panel.setVisible(False)
         layout.addWidget(self._horizons_panel)
 
@@ -681,6 +684,7 @@ class ParameterPanel(QWidget):
             "body_id": self.body_id_edit.text().strip() or None,
             "eclipses": self.eclipses_check.isChecked(),
             "parent_body_id": self.parent_id_edit.text().strip() or None,
+            "body_center": self.body_center_check.isChecked(),
         }
 
         if use_spice:
@@ -805,6 +809,7 @@ class ParameterPanel(QWidget):
             self.eclipses_check.setChecked(ecl_cfg.get("enabled", True))
             if "parent_body_id" in ecl_cfg:
                 self.parent_id_edit.setText(str(ecl_cfg["parent_body_id"]))
+            self.body_center_check.setChecked(horizons_cfg.get("body_center", False))
 
     def to_yaml_dict(self):
         """Build a YAML-compatible dict from current widget values."""
@@ -851,6 +856,8 @@ class ParameterPanel(QWidget):
                 yaml_dict["horizons"]["body_id"] = params["body_id"]
             if params.get("parent_body_id"):
                 yaml_dict["horizons"]["eclipses"]["parent_body_id"] = params["parent_body_id"]
+            if params.get("body_center"):
+                yaml_dict["horizons"]["body_center"] = True
 
         # Custom depth profile layers
         if self._custom_layers:
