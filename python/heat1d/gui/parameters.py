@@ -30,6 +30,9 @@ from ..eclipse import is_satellite, get_parent_body_id
 PLANET_NAMES = [
     "Moon", "Mercury", "Mars", "Pluto",
     "Europa", "Ganymede", "Triton", "Bennu",
+    "Donaldjohanson", "Eurybates", "Polymele", "Leucus", "Orus",
+    "Patroclus", "Menoetius",
+    "Custom",
 ]
 
 # Bodies with thick atmospheres — warn if selected via Horizons search
@@ -562,10 +565,22 @@ class ParameterPanel(QWidget):
 
     def _on_mode_changed(self, horizons_checked):
         self._horizons_panel.setVisible(horizons_checked)
+        if horizons_checked:
+            self.planet_combo.setCurrentText("Custom")
 
     # ---- Planet / Horizons signals ----
 
     def _on_planet_changed(self, name):
+        if name == "Custom":
+            # Enable manual parameter entry
+            if hasattr(self, 'thermo_auto'):
+                self.thermo_auto.setChecked(False)
+            # Clear Horizons body ID (user must set it manually)
+            if hasattr(self, 'body_id_edit'):
+                self.body_id_edit.setText("")
+                self._update_satellite_info("")
+            return
+
         planet = getattr(planets_pkg, name, None)
         if planet is None:
             return
@@ -619,8 +634,14 @@ class ParameterPanel(QWidget):
                         f"heat1d is an airless body thermal model and "
                         f"does not include atmospheric effects."
                     )
-                self.planet_combo.setCurrentText(pname)
+                # Select the planet if it's in the dropdown, otherwise Custom
+                if pname in PLANET_NAMES:
+                    self.planet_combo.setCurrentText(pname)
+                else:
+                    self.planet_combo.setCurrentText("Custom")
                 return None
+        # Body not in HORIZONS_BODY_IDS — select Custom
+        self.planet_combo.setCurrentText("Custom")
         return None
 
     # ---- Run ----

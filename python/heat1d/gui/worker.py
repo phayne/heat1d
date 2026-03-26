@@ -122,10 +122,16 @@ class SimulationWorker(QThread):
         # Resolve planet
         self.progress.emit("Resolving planet...")
         from heat1d import planets as planets_pkg
-        planet = getattr(planets_pkg, planet_name, None)
-        if planet is None:
-            self.error.emit(f"Unknown planet: {planet_name}")
-            return
+        if planet_name == "Custom":
+            # Start from Moon as a base template for a custom body
+            planet = copy.copy(getattr(planets_pkg, "Moon"))
+            planet.name = "Custom"
+            # Thermo overrides will be applied below
+        else:
+            planet = getattr(planets_pkg, planet_name, None)
+            if planet is None:
+                self.error.emit(f"Unknown planet: {planet_name}")
+                return
 
         # Apply thermophysical property overrides
         if not thermo_auto and thermo:
