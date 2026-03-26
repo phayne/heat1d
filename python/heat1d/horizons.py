@@ -505,39 +505,67 @@ def horizons_to_flux(solar_elevation_deg, observer_range_au, planet):
 # Body-center query (no rotational model required)
 # ---------------------------------------------------------------------------
 
-def _horizons_request_body_center(body_id, start_time, stop_time,
-                                  step_size, timeout, command="10"):
-    """Make a Horizons API request with the body center as observer.
+def _body_id_to_command(body_id):
+    """Convert a NAIF-style body ID to a Horizons COMMAND string.
 
-    Unlike :func:`_horizons_request`, this does **not** use ``coord@`` or
-    surface coordinates, so it works for bodies without a rotational model
-    in the Horizons database.
+    Horizons CENTER does not support small bodies, so body-center queries
+    reverse the query direction: the body becomes the COMMAND (target) and
+    the Sun becomes the CENTER.  Small-body COMMAND syntax uses the catalog
+    number (not the NAIF ID) with a trailing semicolon.
 
     Parameters
     ----------
     body_id : str
-        Horizons body ID for the observer body.
+        NAIF-style body ID (e.g. ``"2052246"`` for asteroid 52246).
+
+    Returns
+    -------
+    str
+        Horizons COMMAND string (e.g. ``"52246;"``).
+    """
+    try:
+        bid_int = int(body_id)
+    except ValueError:
+        return body_id
+    # NAIF convention: numbered asteroids = 2000000 + catalog number
+    if bid_int >= 2000000:
+        return f"{bid_int - 2000000};"
+    return body_id
+
+
+def _horizons_request_body_center(body_id, start_time, stop_time,
+                                  step_size, timeout):
+    """Make a Horizons API request for a body's heliocentric position.
+
+    Queries the body as seen from the Sun (``CENTER='@10'``).  This works
+    for any body in the Horizons database, including small bodies without
+    rotational models.  The caller must reverse the ecliptic coordinates
+    to obtain the Sun's position as seen from the body.
+
+    Parameters
+    ----------
+    body_id : str
+        Horizons body ID for the body (e.g. ``"2052246"``).
     start_time, stop_time : str
         UTC time strings.
     step_size : str
         Horizons step size (e.g. ``"10m"``).
     timeout : int
         HTTP timeout [seconds].
-    command : str
-        Target body (default ``"10"`` = Sun).
 
     Returns
     -------
     str
         Raw Horizons result text.
     """
+    command = _body_id_to_command(body_id)
     params = {
         "format": "json",
         "COMMAND": f"'{command}'",
         "OBJ_DATA": "'NO'",
         "MAKE_EPHEM": "'YES'",
         "EPHEM_TYPE": "'OBSERVER'",
-        "CENTER": f"'@{body_id}'",
+        "CENTER": "'@10'",
         "START_TIME": f"'{start_time}'",
         "STOP_TIME": f"'{stop_time}'",
         "STEP_SIZE": f"'{step_size}'",
@@ -571,25 +599,23 @@ def _horizons_request_body_center(body_id, start_time, stop_time,
 
 
 def query_horizons_body_center(body_id, start_time, stop_time,
-                               step_size="10m", timeout=60, command="10"):
+                               step_size="10m", timeout=60):
     """Query Horizons for the Sun's position from a body's center.
 
-    No rotational model is required.  Returns the Sun's ecliptic
-    longitude/latitude and distance, which can be combined with
-    user-supplied rotation parameters to compute local solar angles.
+    No rotational model is required.  Internally queries the body as
+    seen from the Sun (reversed direction) and flips the coordinates
+    to give the Sun's ecliptic position as seen from the body.
 
     Parameters
     ----------
     body_id : str
-        Horizons body ID for the observer body.
+        Horizons body ID for the body (e.g. ``"2052246"``).
     start_time, stop_time : str
         UTC time strings.
     step_size : str
         Horizons step size.
     timeout : int
         HTTP timeout [seconds].
-    command : str
-        Target body (default ``"10"`` = Sun).
 
     Returns
     -------
@@ -599,9 +625,17 @@ def query_horizons_body_center(body_id, start_time, stop_time,
         ``n_samples``.
     """
     result_text = _horizons_request_body_center(
-        body_id, start_time, stop_time, step_size, timeout, command,
+        body_id, start_time, stop_time, step_size, timeout,
     )
-    return _parse_horizons_response(result_text, quantities="31,20")
+    result = _parse_horizons_response(result_text, quantities="31,20")
+
+    # The query gives the body's position as seen from the Sun.
+    # Reverse to get the Sun's position as seen from the body:
+    #   sun_lon = body_lon + 180°,  sun_lat = -body_lat
+    result["sun_ecl_lon_deg"] = (result["sun_ecl_lon_deg"] + 180.0) % 360.0
+    result["sun_ecl_lat_deg"] = -result["sun_ecl_lat_deg"]
+
+    return result
 
 
 def _ellipsoid_normal(lat_rad, lon_rad, a, b, c):
