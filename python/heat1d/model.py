@@ -137,59 +137,29 @@ class Model(object):
         config = self.profile.config
 
         # --- Phase 1: Equilibration ---
-        if config.equil_solver == "fourier-matrix":
+        if self._auto_equil:
+            # Auto mode: try Fourier for instant steady-state, fall back
+            # to time-stepping if Fourier fails (e.g., custom layers).
+            try:
+                self._equilibrate_fourier()
+            except Exception:
+                self._equilibrate_timestepping(config)
+        elif config.equil_solver == "fourier-matrix":
             self._equilibrate_fourier()
         else:
-            # Time-stepping equilibration (implicit/CN/explicit)
-            output_solver = config.solver
-            adaptive_was_on = self._adaptive
-            self._adaptive = False
-            if config.equil_solver != output_solver:
-                config.solver = config.equil_solver
-            if config.solver != "explicit":
-                self.dt = self._equil_dt
-            else:
-                self.dt = getTimeStep(self.profile, self.planet.day, config)
-
-            if self._auto_equil:
-                # Convergence-based equilibration: run orbit-by-orbit,
-                # comparing the bottom-layer temperature at the same orbital
-                # phase (noon) across successive orbits.  The bottom layer
-                # is the slowest to equilibrate; once it converges the
-                # surface and intermediate layers are already stable.
-                T_bot_prev = float(self.profile.T[-1])
-                orbit_time = self.planet.year - self.planet.year % self.planet.day
-                for orbit in range(1, self._max_equil_orbits + 1):
-                    orbit_end = orbit * orbit_time
-                    while self.t < orbit_end:
-                        self.advance()
-                    T_bot = float(self.profile.T[-1])
-                    if abs(T_bot - T_bot_prev) < config.DTBOT:
-                        break
-                    T_bot_prev = T_bot
-                self._equil_orbits = orbit
-                self.equiltime = self.t
-            else:
-                # Fixed-time equilibration
-                while self.t < self.equiltime:
-                    self.advance()
-                self._equil_orbits = config.NYEARSEQ
-
-            config.solver = output_solver
-            self._adaptive = adaptive_was_on
+            self._equilibrate_timestepping(config)
 
         # --- Phase 1b: Warmup ---
-        # Run 1 diurnal cycle with the output solver at CFL-limited dt
-        # to eliminate the transient caused by the equil_dt → output_dt
-        # switch (the implicit solver's steady state depends on dt).
-        # Adaptive is disabled during warmup and output because CFL-limited
-        # stepping resolves the diurnal wave correctly; adaptive's large
-        # steps would introduce phase lag and amplitude damping.
+        # Run diurnal cycles with the output solver at CFL-limited dt
+        # to eliminate the transient caused by the Fourier/equil_dt →
+        # output_dt switch.  Auto mode uses 3 cycles for a smooth
+        # transition; explicit Fourier uses 1 cycle.
+        n_warmup = 3 if self._auto_equil else 1
         if config.solver != "explicit":
             self._output_cfl = True
             self._adaptive = False
         self.dt = computeCFL(self.profile, config)
-        warmup_end = self.t + self.planet.day
+        warmup_end = self.t + n_warmup * self.planet.day
         while self.t < warmup_end:
             self.advance()
         self._output_cfl = False
@@ -335,6 +305,43 @@ class Model(object):
         # Initialize profile from T(t=0, z) — local noon
         self.profile.T[:] = T_all[0, :]
         self.profile.update_properties()
+
+    def _equilibrate_timestepping(self, config):
+        """Equilibrate using a time-stepping solver (implicit/CN/explicit)."""
+        output_solver = config.solver
+        adaptive_was_on = self._adaptive
+        self._adaptive = False
+        if config.equil_solver != output_solver:
+            config.solver = config.equil_solver
+        if config.solver != "explicit":
+            self.dt = self._equil_dt
+        else:
+            self.dt = getTimeStep(self.profile, self.planet.day, config)
+
+        if self._auto_equil:
+            # Convergence-based equilibration: run orbit-by-orbit,
+            # comparing the bottom-layer temperature at the same orbital
+            # phase (noon) across successive orbits.
+            T_bot_prev = float(self.profile.T[-1])
+            orbit_time = self.planet.year - self.planet.year % self.planet.day
+            for orbit in range(1, self._max_equil_orbits + 1):
+                orbit_end = orbit * orbit_time
+                while self.t < orbit_end:
+                    self.advance()
+                T_bot = float(self.profile.T[-1])
+                if abs(T_bot - T_bot_prev) < config.DTBOT:
+                    break
+                T_bot_prev = T_bot
+            self._equil_orbits = orbit
+            self.equiltime = self.t
+        else:
+            # Fixed-time equilibration
+            while self.t < self.equiltime:
+                self.advance()
+            self._equil_orbits = config.NYEARSEQ
+
+        config.solver = output_solver
+        self._adaptive = adaptive_was_on
 
     def advance(self, dt_max=None):
         if self._adaptive:

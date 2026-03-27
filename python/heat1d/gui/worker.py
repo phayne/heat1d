@@ -126,6 +126,36 @@ class SimulationWorker(QThread):
             # Start from Moon as a base template for a custom body
             planet = copy.copy(getattr(planets_pkg, "Moon"))
             planet.name = "Custom"
+            # Apply Horizons OBJ_DATA if available
+            obj = p.get("obj_data", {})
+            if obj.get("semi_major_axis_au"):
+                planet.rAU = obj["semi_major_axis_au"]
+                planet.rsm = planet.rAU * 1.495978707e11
+                planet.S = 1361.0 / (planet.rAU ** 2)
+            if obj.get("orbital_period_yr"):
+                planet.year = obj["orbital_period_yr"] * 365.25 * 86400.0
+            if obj.get("eccentricity") is not None:
+                planet.eccentricity = obj["eccentricity"]
+            if obj.get("rotation_period_h"):
+                planet.day = obj["rotation_period_h"] * 3600.0
+            if obj.get("albedo") is not None:
+                planet.albedo = obj["albedo"]
+            if obj.get("radius_km"):
+                planet.R = obj["radius_km"] * 1000.0
+            planet.Qb = 0.0
+            planet.obliquity = 0.0
+            planet.Lp = 0.0
+            planet.albedoCoef = [0.0, 0.0]
+            # Check for missing rotation period
+            if planet.day == getattr(planets_pkg, "Moon").day and not obj.get("rotation_period_h"):
+                if obj.get("semi_major_axis_au"):
+                    # We have orbital data but no rotation — still using Moon's day
+                    self.error.emit(
+                        "Rotation period not available for this body. "
+                        "Please specify the rotation period (planet.day) in "
+                        "the YAML config or add the body to planets.py."
+                    )
+                    return
             # Thermo overrides will be applied below
         else:
             planet = getattr(planets_pkg, planet_name, None)
@@ -234,6 +264,15 @@ class SimulationWorker(QThread):
                 metadata = spice_meta
                 if flux_dt > 0:
                     config.output_interval = flux_dt
+                # Adjust equilibration to match the solar distance at the
+                # start of the Horizons output.  Set e=0 so equilibration
+                # flux is constant (no orbital-phase mismatch).
+                r0 = spice_meta.get("initial_range_au")
+                if r0 is not None:
+                    planet = copy.copy(planet)
+                    planet.S = 1361.0 / (r0 ** 2)
+                    planet.rAU = r0
+                    planet.eccentricity = 0.0
             except Exception as exc:
                 msg = str(exc)
                 if "Cannot find central body" in msg or \

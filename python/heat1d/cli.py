@@ -25,17 +25,23 @@ def _resolve_planet(name, overrides):
     planet : object
         Planet object (possibly modified).
     """
+    import copy
     from heat1d import planets as planets_pkg
 
-    planet = getattr(planets_pkg, name, None)
-    if planet is None:
-        raise click.ClickException(
-            f"Unknown planet '{name}'. Available: "
-            + ", ".join(
-                a for a in dir(planets_pkg)
-                if not a.startswith("_") and hasattr(getattr(planets_pkg, a), "day")
+    if name == "Custom":
+        # Custom planet starts from Moon template
+        planet = copy.copy(getattr(planets_pkg, "Moon"))
+        planet.name = "Custom"
+    else:
+        planet = getattr(planets_pkg, name, None)
+        if planet is None:
+            raise click.ClickException(
+                f"Unknown planet '{name}'. Available: Custom, "
+                + ", ".join(
+                    a for a in dir(planets_pkg)
+                    if not a.startswith("_") and hasattr(getattr(planets_pkg, a), "day")
+                )
             )
-        )
     for key, val in overrides.items():
         if hasattr(planet, key):
             setattr(planet, key, val)
@@ -206,7 +212,9 @@ def main(
     planet_cfg = yaml_data.get("planet", {})
     if isinstance(planet_cfg, dict):
         # Copy overridable planet properties from YAML
-        for key in ("albedo", "emissivity", "ks", "kd", "rhos", "rhod", "H", "cp0", "Qb"):
+        for key in ("albedo", "emissivity", "ks", "kd", "rhos", "rhod",
+                    "H", "cp0", "Qb", "rAU", "day", "year",
+                    "eccentricity", "obliquity"):
             if key in planet_cfg:
                 planet_overrides[key] = planet_cfg[key]
         # Triaxial shape override
@@ -223,6 +231,47 @@ def main(
         planet_overrides["albedo"] = albedo
 
     planet = _resolve_planet(run_planet_name, planet_overrides)
+
+    # For Custom planet with SPICE, auto-query Horizons for orbital data
+    if run_planet_name == "Custom" and use_spice and body_id:
+        from .horizons import query_body_data, HorizonsError as _HE
+        try:
+            obj = query_body_data(body_id)
+            if not quiet:
+                click.echo(f"  Auto-detected: a={obj.get('semi_major_axis_au')} AU, "
+                           f"P_rot={obj.get('rotation_period_h')} h, "
+                           f"albedo={obj.get('albedo')}")
+            # Apply OBJ_DATA values where not already overridden by YAML
+            if obj.get("semi_major_axis_au") and not planet_cfg.get("rAU"):
+                planet.rAU = obj["semi_major_axis_au"]
+                planet.rsm = planet.rAU * 1.495978707e11
+                planet.S = 1361.0 / (planet.rAU ** 2)
+            if obj.get("orbital_period_yr") and not planet_cfg.get("year"):
+                planet.year = obj["orbital_period_yr"] * 365.25 * 86400.0
+            if obj.get("eccentricity") is not None and not planet_cfg.get("eccentricity"):
+                planet.eccentricity = obj["eccentricity"]
+            if obj.get("rotation_period_h") and not planet_cfg.get("day"):
+                planet.day = obj["rotation_period_h"] * 3600.0
+            if obj.get("albedo") is not None and not planet_cfg.get("albedo") and albedo is None:
+                planet.albedo = obj["albedo"]
+            if obj.get("radius_km") and planet.R is None:
+                planet.R = obj["radius_km"] * 1000.0
+            # Small body defaults
+            if not planet_cfg.get("Qb"):
+                planet.Qb = 0.0
+            if not planet_cfg.get("obliquity"):
+                planet.obliquity = 0.0
+            planet.Lp = planet_cfg.get("Lp", 0.0)
+            planet.albedoCoef = [0.0, 0.0]
+            # Check for missing rotation period
+            if not obj.get("rotation_period_h") and not planet_cfg.get("day"):
+                raise click.ClickException(
+                    "Rotation period not available for this body in Horizons. "
+                    "Specify it via YAML: planet: { day: <seconds> }"
+                )
+        except _HE as exc:
+            if not quiet:
+                click.echo(f"  Warning: could not auto-detect body data: {exc}")
 
     # Convert --output-dt (local hours) to output_interval (seconds)
     if output_dt is not None and output_dt > 0:
@@ -294,6 +343,16 @@ def main(
         except HorizonsError as exc:
             raise click.ClickException(f"Horizons query failed: {exc}")
 
+        # Adjust equilibration parameters to match the solar distance at the
+        # start of the Horizons output.  Set eccentricity=0 so the
+        # equilibration flux is constant (no orbital-phase mismatch).
+        # The Horizons flux already captures the real orbital geometry.
+        r0 = spice_meta.get("initial_range_au")
+        if r0 is not None:
+            planet.S = 1361.0 / (r0 ** 2)
+            planet.rAU = r0
+            planet.eccentricity = 0.0
+
         if not quiet:
             mode = spice_meta.get("mode", "surface_observer")
             mode_label = "body-center" if mode == "body_center" else "surface"
@@ -309,7 +368,12 @@ def main(
 
     # --- Print summary ---
     if not quiet:
-        click.echo(f"heat1d v0.4.0")
+        try:
+            from importlib.metadata import version as _pkg_version
+            _ver = _pkg_version("heat1d")
+        except Exception:
+            _ver = "0.4.1"
+        click.echo(f"heat1d v{_ver}")
         click.echo(f"  Planet:   {run_planet_name}")
         click.echo(f"  Latitude: {run_lat} deg")
         click.echo(f"  Days:     {run_ndays}")

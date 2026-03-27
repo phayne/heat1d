@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "heat1d"
-version = "0.4.0"
+version = "0.4.1"
 description = "Thermal model for planetary science applications"
 readme = "README.rst"
 license = {text = "MIT"}

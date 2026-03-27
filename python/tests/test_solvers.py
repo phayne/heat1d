@@ -64,9 +64,9 @@ class TestExplicitSolver:
         m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
         m.run()
         # Regression values with angle-dependent albedo (A_h=0.12), n=4 grid
-        # (auto equilibration ~7 orbits; ref 385 +/- 5 K)
-        np.testing.assert_allclose(m.T[:, 0].max(), 388.42, atol=0.5)
-        np.testing.assert_allclose(m.T[:, 0].min(), 91.88, atol=0.5)
+        # (Fourier equilibration + 3-cycle warmup; ref 385 +/- 5 K)
+        np.testing.assert_allclose(m.T[:, 0].max(), 385.36, atol=0.5)
+        np.testing.assert_allclose(m.T[:, 0].min(), 91.44, atol=0.5)
 
 
 class TestSolverConsistency:

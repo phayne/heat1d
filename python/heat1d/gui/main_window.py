@@ -211,8 +211,9 @@ class MainWindow(QMainWindow):
             return
 
         if len(results) == 1:
-            body_id, display_name = results[0]
-            warning = self.param_panel.set_body_from_search(body_id, display_name)
+            body_id, display_name, obj_data = results[0]
+            warning = self.param_panel.set_body_from_search(
+                body_id, display_name, obj_data=obj_data)
             self.status_label.setText(f"Found: {display_name} (ID: {body_id})")
             if warning:
                 QMessageBox.warning(self, "Atmosphere Warning", warning)
@@ -223,9 +224,9 @@ class MainWindow(QMainWindow):
             layout = QVBoxLayout(dlg)
             layout.addWidget(QLabel("Multiple matches found. Select one:"))
             list_w = QListWidget()
-            for body_id, display_name in results:
+            for body_id, display_name, obj_data in results:
                 item = QListWidgetItem(f"{body_id}  {display_name}")
-                item.setData(Qt.UserRole, (body_id, display_name))
+                item.setData(Qt.UserRole, (body_id, display_name, obj_data))
                 list_w.addItem(item)
             list_w.itemDoubleClicked.connect(dlg.accept)
             layout.addWidget(list_w)
@@ -233,8 +234,9 @@ class MainWindow(QMainWindow):
             if dlg.exec() == QDialog.Accepted:
                 item = list_w.currentItem()
                 if item:
-                    body_id, display_name = item.data(Qt.UserRole)
-                    warning = self.param_panel.set_body_from_search(body_id, display_name)
+                    body_id, display_name, obj_data = item.data(Qt.UserRole)
+                    warning = self.param_panel.set_body_from_search(
+                        body_id, display_name, obj_data=obj_data)
                     self.status_label.setText(f"Selected: {display_name} (ID: {body_id})")
                     if warning:
                         QMessageBox.warning(self, "Atmosphere Warning", warning)

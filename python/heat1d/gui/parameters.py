@@ -63,6 +63,7 @@ class ParameterPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._building = True  # suppress signals during construction
+        self._obj_data = {}  # Horizons OBJ_DATA from last search
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(4, 4, 4, 4)
@@ -565,8 +566,6 @@ class ParameterPanel(QWidget):
 
     def _on_mode_changed(self, horizons_checked):
         self._horizons_panel.setVisible(horizons_checked)
-        if horizons_checked:
-            self.planet_combo.setCurrentText("Custom")
 
     # ---- Planet / Horizons signals ----
 
@@ -615,8 +614,17 @@ class ParameterPanel(QWidget):
         if name:
             self.search_requested.emit(name)
 
-    def set_body_from_search(self, body_id, display_name):
+    def set_body_from_search(self, body_id, display_name, obj_data=None):
         """Called by main window after Horizons search resolves.
+
+        Parameters
+        ----------
+        body_id : str
+            Horizons body ID.
+        display_name : str
+            Human-readable name.
+        obj_data : dict or None
+            Physical/orbital parameters from Horizons OBJ_DATA.
 
         Returns
         -------
@@ -625,6 +633,7 @@ class ParameterPanel(QWidget):
         """
         self.body_id_edit.setText(body_id)
         self._update_satellite_info(body_id)
+        self._obj_data = obj_data or {}
         # Try to match to a known planet name for the combo
         for pname, bid in HORIZONS_BODY_IDS.items():
             if bid == body_id:
@@ -642,6 +651,10 @@ class ParameterPanel(QWidget):
                 return None
         # Body not in HORIZONS_BODY_IDS — select Custom
         self.planet_combo.setCurrentText("Custom")
+        # Auto-populate albedo from OBJ_DATA if available
+        if self._obj_data.get("albedo") is not None:
+            if "albedo" in self._thermo_spins:
+                self._thermo_spins["albedo"].setValue(self._obj_data["albedo"])
         return None
 
     # ---- Run ----
@@ -706,6 +719,7 @@ class ParameterPanel(QWidget):
             "eclipses": self.eclipses_check.isChecked(),
             "parent_body_id": self.parent_id_edit.text().strip() or None,
             "body_center": self.body_center_check.isChecked(),
+            "obj_data": self._obj_data,
         }
 
         if use_spice:

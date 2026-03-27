@@ -45,9 +45,11 @@ def search_horizons_body(name, timeout=15):
 
     Returns
     -------
-    list of (str, str)
-        List of ``(body_id, display_name)`` tuples.  Empty list if
-        no match found.
+    list of (str, str, dict)
+        List of ``(body_id, display_name, obj_data)`` tuples.
+        ``obj_data`` is a dict of physical/orbital parameters parsed
+        from the Horizons OBJ_DATA response (empty for multi-match
+        disambiguation results).  Empty list if no match found.
     """
     params = {
         "format": "json",
@@ -116,7 +118,7 @@ def _parse_search_result(result_text):
                         else:
                             body_id = parts[0]
                             display = parts[1].strip()
-                        results.append((body_id, display))
+                        results.append((body_id, display, {}))
                     except ValueError:
                         pass
         return results
@@ -131,7 +133,7 @@ def _parse_search_result(result_text):
                 end = after.index(")")
                 body_id = after[start:end].strip()
                 name_part = after[:after.index("(")].strip()
-                return [(body_id, name_part)]
+                return [(body_id, name_part, _parse_obj_data(result_text))]
 
         # Format 2: " Revised: ...   Enceladus / (Saturn)   602"
         # The body ID is the last token on the "Revised:" line
@@ -151,7 +153,7 @@ def _parse_search_result(result_text):
                     name_part = name_match.group(1).strip().rstrip("/").strip()
                 else:
                     name_part = body_id
-                return [(body_id, name_part)]
+                return [(body_id, name_part, _parse_obj_data(result_text))]
 
     # Case: single asteroid/small-body match
     # Header line: "JPL/HORIZONS               269 Justitia (A887 SA)     2026-..."
@@ -178,10 +180,78 @@ def _parse_search_result(result_text):
                         break
                 # Tag as small body — SPICE surface ephemeris not available
                 name_part += " [small body]"
-                return [(body_id, name_part)]
+                return [(body_id, name_part, _parse_obj_data(result_text))]
 
     # Case: no useful match found
     if "No matches found" in result_text or "Cannot find" in result_text:
         return []
 
     return []
+
+
+def _parse_obj_data(result_text):
+    """Extract physical and orbital parameters from Horizons OBJ_DATA.
+
+    Parses the ``Asteroid physical parameters`` and ``IAU76/J2000``
+    orbital elements sections that Horizons returns when
+    ``OBJ_DATA='YES'``.
+
+    Parameters
+    ----------
+    result_text : str
+        Full Horizons result text.
+
+    Returns
+    -------
+    dict
+        Keys: ``radius_km``, ``rotation_period_h``, ``albedo``,
+        ``semi_major_axis_au``, ``eccentricity``, ``orbital_period_yr``,
+        ``spectral_type``.  Values are ``None`` when not available.
+    """
+    data = {
+        "radius_km": None,
+        "rotation_period_h": None,
+        "albedo": None,
+        "semi_major_axis_au": None,
+        "eccentricity": None,
+        "orbital_period_yr": None,
+        "spectral_type": None,
+    }
+
+    # --- Physical parameters ---
+    # Format: "RAD= 25.364", "ROTPER= 33.128", "ALBEDO= .061"
+    m = re.search(r'RAD=\s*([\d.]+)', result_text)
+    if m:
+        data["radius_km"] = float(m.group(1))
+
+    m = re.search(r'ROTPER=\s*([\d.]+)', result_text)
+    if m:
+        data["rotation_period_h"] = float(m.group(1))
+    # If "ROTPER= n.a." → no match, stays None
+
+    m = re.search(r'ALBEDO=\s*([.\d]+)', result_text)
+    if m:
+        data["albedo"] = float(m.group(1))
+
+    m = re.search(r'STYP=\s*(\S+)', result_text)
+    if m and m.group(1).lower() != "n.a.":
+        data["spectral_type"] = m.group(1)
+
+    # --- Orbital elements ---
+    # These appear in a block after "IAU76/J2000 helio. ecliptic osc. elements"
+    # Format: "   EC= .2131484921430992", "   A= 2.616505270376438"
+    #         "   PER= 4.23244"
+    m = re.search(r'\bEC=\s*([\d.]+)', result_text)
+    if m:
+        data["eccentricity"] = float(m.group(1))
+
+    # Semi-major axis: match "A= 2.616..." but not "MA=" or "ADIST="
+    m = re.search(r'(?<![A-Z])\bA=\s*([\d.]+)', result_text)
+    if m:
+        data["semi_major_axis_au"] = float(m.group(1))
+
+    m = re.search(r'\bPER=\s*([\d.]+)', result_text)
+    if m:
+        data["orbital_period_yr"] = float(m.group(1))
+
+    return data

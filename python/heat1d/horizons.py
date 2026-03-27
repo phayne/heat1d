@@ -70,6 +70,93 @@ class HorizonsError(Exception):
 
 
 # ---------------------------------------------------------------------------
+# Body data query (OBJ_DATA)
+# ---------------------------------------------------------------------------
+
+def query_body_data(body_id):
+    """Query Horizons for physical and orbital parameters of a body.
+
+    Uses the ``OBJ_DATA`` response to extract radius, rotation period,
+    albedo, semi-major axis, eccentricity, and orbital period.
+
+    Parameters
+    ----------
+    body_id : str
+        Horizons body ID or NAIF ID (e.g. ``"2000269"``).
+
+    Returns
+    -------
+    dict
+        Keys: ``radius_km``, ``rotation_period_h``, ``albedo``,
+        ``semi_major_axis_au``, ``eccentricity``, ``orbital_period_yr``,
+        ``spectral_type``.  Values are ``None`` when not available.
+    """
+    import re
+
+    command = _body_id_to_command(body_id)
+    params = {
+        "format": "json",
+        "COMMAND": f"'{command}'",
+        "OBJ_DATA": "'YES'",
+        "MAKE_EPHEM": "'NO'",
+    }
+    url = HORIZONS_API_URL + "?" + urllib.parse.urlencode(params)
+
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8")
+    except Exception as exc:
+        raise HorizonsError(f"Body data query failed: {exc}") from exc
+
+    data = json.loads(raw)
+    result_text = data.get("result", "")
+    if not result_text:
+        raise HorizonsError("Empty result from Horizons body data query")
+
+    # Parse physical parameters
+    obj = {
+        "radius_km": None,
+        "rotation_period_h": None,
+        "albedo": None,
+        "semi_major_axis_au": None,
+        "eccentricity": None,
+        "orbital_period_yr": None,
+        "spectral_type": None,
+    }
+
+    m = re.search(r'RAD=\s*([\d.]+)', result_text)
+    if m:
+        obj["radius_km"] = float(m.group(1))
+
+    m = re.search(r'ROTPER=\s*([\d.]+)', result_text)
+    if m:
+        obj["rotation_period_h"] = float(m.group(1))
+
+    m = re.search(r'ALBEDO=\s*([.\d]+)', result_text)
+    if m:
+        obj["albedo"] = float(m.group(1))
+
+    m = re.search(r'STYP=\s*(\S+)', result_text)
+    if m and m.group(1).lower() != "n.a.":
+        obj["spectral_type"] = m.group(1)
+
+    m = re.search(r'\bEC=\s*([\d.]+)', result_text)
+    if m:
+        obj["eccentricity"] = float(m.group(1))
+
+    m = re.search(r'(?<![A-Z])\bA=\s*([\d.]+)', result_text)
+    if m:
+        obj["semi_major_axis_au"] = float(m.group(1))
+
+    m = re.search(r'\bPER=\s*([\d.]+)', result_text)
+    if m:
+        obj["orbital_period_yr"] = float(m.group(1))
+
+    return obj
+
+
+# ---------------------------------------------------------------------------
 # Body ID resolution
 # ---------------------------------------------------------------------------
 
@@ -914,6 +1001,7 @@ def _fetch_body_center(bid, lat_deg, lon_deg, start_time, stop_time,
         "times_utc": result["times_utc"],
         "eclipse_info": None,
         "mode": "body_center",
+        "initial_range_au": float(result["observer_range_au"][0]),
     }
 
     return flux, dt, metadata

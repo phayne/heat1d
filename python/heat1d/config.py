@@ -33,7 +33,7 @@ class Configurator:
     adaptive_tol: float = 1.0  # [K] step-doubling error tolerance; None = fixed dt
     # Solver selection
     solver: str = "explicit"  # "explicit", "crank-nicolson", or "implicit"
-    equil_solver: str = "implicit"  # solver used during equilibration phase
+    equil_solver: str = "fourier-matrix"  # solver used during equilibration phase
     # Heat capacity model
     cp_model: str = "polynomial"  # "polynomial" (Hemingway/Ledlow) or "biele2022"
     # Volterra predictor for surface BC (Schorghofer & Khatiwala 2024)

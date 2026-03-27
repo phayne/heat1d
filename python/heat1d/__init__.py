@@ -4,7 +4,11 @@
 
 __author__ = """Paul O. Hayne"""
 __email__ = "paul.hayne@lasp.colorado.edu"
-__version__ = "0.4.0"
+try:
+    from importlib.metadata import version as _pkg_version
+    __version__ = _pkg_version("heat1d")
+except Exception:
+    __version__ = "0.4.1"
 
 from . import planets
 from .config import Configurator, R350
