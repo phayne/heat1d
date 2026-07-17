@@ -11,6 +11,7 @@ from . import planets
 
 from . import orbits
 from .config import Configurator
+from . import terrain
 from .crater import crater_beta, crater_f, effective_emissivity, psr_flux, psr_viable
 from .profile import Profile
 from .properties import albedoVar
@@ -21,12 +22,38 @@ class Model(object):
 
     # Initialization
     def __init__(self, planet=planets.Moon, lat=0, lon=0, ndays=1, config=Configurator(),
-                 flux_series=None, flux_dt=None, custom_layers=None, psr_d_D=None):
+                 flux_series=None, flux_dt=None, custom_layers=None, psr_d_D=None,
+                 slope=0.0, slope_az=0.0, ground_heating=None, flux_noon_idx=None):
 
         # Initialize
         self.planet = planet
         self.lat = lat
         self.lon = lon  # observer longitude [rad]
+
+        # Sloped surface (Braun & Mitchell 1983 geometry; see terrain.py)
+        # slope: dip from horizontal [rad]; slope_az: downslope azimuth
+        # [rad], clockwise from north (0 = N, pi/2 = E).
+        if not 0.0 <= slope <= np.pi / 2 + 1e-12:
+            raise ValueError("slope must be in [0, pi/2] radians")
+        if slope > 0.0 and psr_d_D is not None:
+            raise ValueError("slope and psr_d_D are mutually exclusive")
+        self.slope = slope
+        self.slope_az = slope_az
+        # Ground heating (indirect flux from surrounding flat terrain):
+        # default ON for sloped surfaces, forced OFF when flat.
+        if ground_heating is None:
+            self.ground_heating = slope > 0.0
+        else:
+            self.ground_heating = bool(ground_heating) and slope > 0.0
+        # Periodic indirect-flux table (built by _prepare_ground_heating)
+        self._Q_ind = None
+        self._Q_ind_dt = None
+        self._gh_offset = 0.0
+        # Index of local noon in an external flux_series (optional hint;
+        # required for phase alignment of slope-projected series whose
+        # peak is not at noon).
+        self._flux_noon_idx = flux_noon_idx
+        self._custom_layers = custom_layers
         self.Sabs = self.planet.S * (1.0 - self.planet.albedo)
         self.r = self.planet.rAU  # solar distance [AU]
         self.nudot = 0.0  # rate of change of true anomaly [rad/s]
@@ -130,6 +157,12 @@ class Model(object):
         self.lt = np.zeros([self.N_steps])
 
     def run(self):
+        # Ground heating: run the flat companion model first so its
+        # periodic indirect-flux table is available to every phase
+        # (fourier equilibration, time-stepping, and output).
+        if self.ground_heating and self._Q_ind is None:
+            self._prepare_ground_heating()
+
         if self.profile.config.solver == "fourier-matrix":
             self._run_fourier()
             return
@@ -249,11 +282,32 @@ class Model(object):
             flux = self.flux_series
             dt = self.flux_dt
             nsteps = len(flux)
+            if self._Q_ind is not None:
+                # External series may not start at noon; use the noon
+                # hint to phase the periodic indirect-flux table.
+                noon_idx = self._flux_noon_idx or 0
+                self._gh_offset = -noon_idx * dt
+                flux = flux + self._ground_heating_flux(np.arange(nsteps) * dt)
         else:
             flux, dt = precompute_diurnal_flux(
                 self.planet, self.lat, nsteps, dec=self.dec, r=self.r,
-                lon=self.lon,
+                lon=self.lon, slope=self.slope, slope_az=self.slope_az,
             )
+            if self._Q_ind is not None:
+                flux = flux + self._ground_heating_flux(np.arange(nsteps) * dt)
+
+        # Sloped surfaces can see the sun rise/set as a step discontinuity
+        # (e.g. an east-facing slope at sunrise), which produces localized
+        # Gibbs ringing in the spectral solution near the terminator.
+        if self.slope > 0.0 and len(flux) > 1:
+            if np.max(np.abs(np.diff(flux))) > 100.0:
+                warnings.warn(
+                    "Sloped-surface flux has a step discontinuity at the "
+                    "terminator; the fourier-matrix solver may show "
+                    "ringing artifacts in T near sunrise/sunset. Consider "
+                    "a time-stepping solver (e.g. crank-nicolson) for "
+                    "output.", stacklevel=2,
+                )
 
         # Run Fourier-matrix solver
         T_all = solve_fourier_matrix(
@@ -291,8 +345,10 @@ class Model(object):
 
         flux, dt = precompute_diurnal_flux(
             self.planet, self.lat, nsteps, dec=self.dec, r=self.r,
-            lon=self.lon,
+            lon=self.lon, slope=self.slope, slope_az=self.slope_az,
         )
+        if self._Q_ind is not None:
+            flux = flux + self._ground_heating_flux(np.arange(nsteps) * dt)
 
         T_all = solve_fourier_matrix(
             flux_series=flux, dt=dt,
@@ -360,6 +416,8 @@ class Model(object):
         self._Qs_prev = self.Qs
         if self._flux_active and self.flux_series is not None:
             self._lookupFlux()
+            if self._Q_ind is not None:
+                self.Qs += self._ground_heating_flux(self.t)
         elif self.psr_d_D is not None:
             self.surfFluxPSR()
         else:
@@ -387,18 +445,31 @@ class Model(object):
 
         Uses the general hour angle formula that accounts for
         eccentric orbits and observer longitude.
+
+        For sloped surfaces (slope > 0) the direct beam is projected
+        onto the tilted surface with self-shadowing (terrain.py), the
+        albedo is evaluated at the local incidence angle, and the
+        indirect terrain flux is added when ground heating is enabled.
         """
         # h(t) = Omega_rot * t + nu0 - nu(t), where nu0 = nu at t=0
         # This ensures h(0) = 0 without requiring an orbit reset.
         h = orbits.TWOPI * self.t / self.P_sid + self._nu0 - self.nu
-        c = orbits.cosSolarZenith(self.lat, self.dec, h)  # cosine of incidence angle
-        i = np.arccos(c)  # solar incidence angle [rad]
+        cz = orbits.cosSolarZenith(self.lat, self.dec, h, clip=False)
+        if self.slope > 0.0:
+            az_sun = orbits.solarAzimuth(self.lat, self.dec, h)
+            c = terrain.slope_incidence_cos(cz, az_sun, self.slope,
+                                            self.slope_az)
+        else:
+            c = 0.5 * (cz + np.abs(cz))  # clip below horizon
+        i = np.arccos(np.clip(c, 0.0, 1.0))  # solar incidence angle [rad]
         a = self.planet.albedoCoef[0]
         b = self.planet.albedoCoef[1]
         f = (1.0 - albedoVar(self.planet.albedo, a, b, i)) / (
             1.0 - self.planet.albedo
         )
         self.Qs = f * self.Sabs * (self.r / self.planet.rAU) ** -2 * c
+        if self._Q_ind is not None:
+            self.Qs += self._ground_heating_flux(self.t)
 
     def surfFluxPSR(self):
         """Absorbed flux at the PSR crater floor (Ingersoll & Svitek 1992).
@@ -423,26 +494,39 @@ class Model(object):
         estimates the starting local time from the first diurnal cycle of the
         flux series and advances the model (with analytical surfFlux) to match,
         eliminating the initial transient that would otherwise occur.
+
+        When ``flux_noon_idx`` was passed to the constructor it is used
+        instead of the argmax estimate — required for slope-projected
+        flux series, whose peak is generally not at local noon (e.g. an
+        east-facing slope peaks in the morning).
         """
         day = self.planet.day
         n_per_day = min(int(round(day / self.flux_dt)), len(self.flux_series))
         if n_per_day < 2:
             return
 
-        # Peak flux in the first diurnal cycle ≈ local noon
-        noon_idx = int(np.argmax(self.flux_series[:n_per_day]))
-        if self.flux_series[noon_idx] <= 0:
-            return  # polar night — no diurnal phase to match
+        if self._flux_noon_idx is not None:
+            noon_idx = int(self._flux_noon_idx)
+        else:
+            # Peak flux in the first diurnal cycle ≈ local noon
+            noon_idx = int(np.argmax(self.flux_series[:n_per_day]))
+            if self.flux_series[noon_idx] <= 0:
+                return  # polar night — no diurnal phase to match
 
         # Time to advance from current noon to the flux series start
         t_advance = (day - noon_idx * self.flux_dt) % day
-        if t_advance < self.flux_dt:
-            return  # already aligned (series starts near noon)
+        if t_advance >= self.flux_dt:
+            # Run analytical model forward (surfFlux, not external flux).
+            # _gh_offset is still 0 here, consistent with the analytical
+            # clock (t mod day = time since noon).
+            t_target = self.t + t_advance
+            while t_target - self.t > 1e-6:
+                self.advance(dt_max=t_target - self.t)
 
-        # Run analytical model forward (surfFlux, not external flux)
-        t_target = self.t + t_advance
-        while t_target - self.t > 1e-6:
-            self.advance(dt_max=t_target - self.t)
+        # Ground-heating table phase for the output clock (t=0 at series
+        # start, reset by run() after this call): Q_ind[0] corresponds
+        # to local noon, which occurs at t = noon_idx * flux_dt.
+        self._gh_offset = -noon_idx * self.flux_dt
 
     def _lookupFlux(self):
         """Look up absorbed flux from the external flux_series via interpolation.
@@ -463,6 +547,82 @@ class Model(object):
         self.Qs = (1.0 - frac) * self.flux_series[idx] + frac * self.flux_series[idx + 1]
 
     # ------------------------------------------------------------------
+    # Ground heating (indirect terrain flux for sloped surfaces)
+    # ------------------------------------------------------------------
+
+    def _prepare_ground_heating(self):
+        """Run a flat companion model and build the indirect-flux table.
+
+        The companion model has the same planet, latitude, longitude,
+        config, and layering, but is flat (slope=0) with ground heating
+        disabled (recursion guard).  Its equilibrated diurnal cycle of
+        surface temperature, together with the analytically recomputed
+        flat-terrain illumination, yields one periodic cycle of indirect
+        flux Q_ind(t) (terrain.indirect_flux_series), sampled uniformly
+        with Q_ind[0] at local noon.
+
+        The single-cycle table is reused for all days (equilibration and
+        output) — the same periodicity approximation the fourier-matrix
+        equilibration already makes for the direct flux.  The coupling
+        is one-way: the slope does not heat the flat terrain back
+        (second order in the view factor sin^2(slope/2)).
+        """
+        from .fourier_solver import _diurnal_geometry
+
+        day = self.planet.day
+        config = self.profile.config
+        nsteps = 480
+        if config.output_interval is not None:
+            nsteps = max(480, int(round(day / config.output_interval)))
+
+        cfg = copy.copy(config)
+        cfg.output_interval = day / nsteps
+        companion = Model(
+            planet=self.planet, lat=self.lat, lon=self.lon, ndays=1,
+            config=cfg, custom_layers=self._custom_layers,
+            slope=0.0, ground_heating=False,
+        )
+        companion.run()
+
+        # Companion surface temperature on the uniform grid.  Output
+        # local times differ by solver (fourier: t = k*dt starting at
+        # noon; time-stepping: t = (k+1)*dtout); periodic interpolation
+        # handles both (np.interp sorts internally when period is given).
+        dt = day / nsteps
+        t_grid = np.arange(nsteps) * dt
+        t_comp = (companion.lt % 24.0) / 24.0 * day
+        T_flat = np.interp(t_grid, t_comp, companion.T[:, 0], period=day)
+
+        # Flat-terrain illumination geometry on the same grid
+        cos_z, r_t, _dt, _h, _dec = _diurnal_geometry(
+            self.planet, self.lat, nsteps, dec=self.dec, r=self.r,
+            lon=self.lon,
+        )
+        self._Q_ind = terrain.indirect_flux_series(
+            self.planet, self.slope, T_flat, cos_z, r_t
+        )
+        self._Q_ind_dt = dt
+
+    def _ground_heating_flux(self, t):
+        """Indirect terrain flux at time(s) t via periodic interpolation.
+
+        The table phase is (t + _gh_offset) mod day, where _gh_offset
+        is 0 whenever t=0 corresponds to local noon (all analytical
+        phases) and -noon_idx*flux_dt during external-flux output.
+        Accepts scalars or arrays.
+        """
+        n = len(self._Q_ind)
+        phase = (
+            np.mod(np.asarray(t, dtype=float) + self._gh_offset,
+                   self.planet.day) / self._Q_ind_dt
+        )
+        i0 = np.floor(phase).astype(int) % n
+        i1 = (i0 + 1) % n
+        frac = phase - np.floor(phase)
+        out = (1.0 - frac) * self._Q_ind[i0] + frac * self._Q_ind[i1]
+        return float(out) if np.ndim(t) == 0 else out
+
+    # ------------------------------------------------------------------
     # Adaptive timestepping (step-doubling error estimation)
     # ------------------------------------------------------------------
 
@@ -473,6 +633,8 @@ class Model(object):
         self._Qs_prev = self.Qs
         if self._flux_active and self.flux_series is not None:
             self._lookupFlux()
+            if self._Q_ind is not None:
+                self.Qs += self._ground_heating_flux(self.t)
         elif self.psr_d_D is not None:
             self.surfFluxPSR()
         else:

@@ -185,6 +185,64 @@ class TestHorizonsToFlux:
         assert np.all(flux >= 0)
 
 
+class TestHorizonsToFluxSlope:
+
+    def test_slope_zero_matches_flat(self):
+        """slope=0 with azimuth given matches the flat computation."""
+        n = 50
+        elev = np.linspace(-30, 90, n)
+        az = np.linspace(0, 360, n)
+        r = np.full(n, planets.Moon.rAU)
+        flat = horizons_to_flux(elev, r, planets.Moon)
+        sloped = horizons_to_flux(elev, r, planets.Moon,
+                                  azimuth_deg=az, slope=0.0, slope_az=1.0)
+        np.testing.assert_allclose(sloped, flat, atol=1e-12)
+
+    def test_below_horizon_zero(self):
+        """Below the flat horizon: zero flux for any slope/azimuth."""
+        elev = np.array([-5.0, -0.5])
+        az = np.array([90.0, 90.0])
+        r = np.full(2, 1.0)
+        flux = horizons_to_flux(elev, r, planets.Moon, azimuth_deg=az,
+                                slope=np.deg2rad(60.0),
+                                slope_az=np.deg2rad(90.0))
+        np.testing.assert_array_equal(flux, 0.0)
+
+    def test_hand_computed_case(self):
+        """20-deg east-facing slope, sun at elev 30 in the east."""
+        from heat1d.properties import albedoVar
+
+        moon = planets.Moon
+        slope = np.deg2rad(20.0)
+        elev = np.array([30.0])
+        az = np.array([90.0])
+        r = np.array([moon.rAU])
+        flux = horizons_to_flux(elev, r, moon, azimuth_deg=az,
+                                slope=slope, slope_az=np.deg2rad(90.0))
+        # mu = cos(z)cos(s) + sin(z)sin(s)cos(0), z = 60 deg
+        mu = (np.cos(np.deg2rad(60)) * np.cos(slope)
+              + np.sin(np.deg2rad(60)) * np.sin(slope))
+        A = albedoVar(moon.albedo, *moon.albedoCoef, np.arccos(mu))
+        expected = (1.0 - A) * moon.S * mu
+        assert flux[0] == pytest.approx(expected, rel=1e-10)
+
+    def test_self_shadowed_slope(self):
+        """Sun in the west, steep east-facing slope: shadowed."""
+        elev = np.array([20.0])
+        az = np.array([270.0])
+        r = np.array([1.0])
+        flux = horizons_to_flux(elev, r, planets.Moon, azimuth_deg=az,
+                                slope=np.deg2rad(80.0),
+                                slope_az=np.deg2rad(90.0))
+        assert flux[0] == 0.0
+
+    def test_missing_azimuth_raises(self):
+        elev = np.array([30.0])
+        r = np.array([1.0])
+        with pytest.raises(ValueError, match="azimuth_deg"):
+            horizons_to_flux(elev, r, planets.Moon, slope=0.3)
+
+
 class TestComputeStepSize:
 
     def test_from_output_interval(self):

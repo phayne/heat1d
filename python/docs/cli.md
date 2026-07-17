@@ -45,8 +45,30 @@ Options:
   --no-plot            Suppress plot generation
   --validate           Run Moon validation suite
   --quiet              Suppress progress output
+  --slope FLOAT        Surface slope [degrees, 0-90]
+  --slope-az FLOAT     Slope azimuth [deg clockwise from N: 0=N, 90=E]
+  --ground-heating / --no-ground-heating
+                       Indirect terrain flux for slopes (default: on)
   -h, --help           Show help and exit
 ```
+
+## Sloped Surfaces
+
+Model an isolated tilted surface with self-shadowing and (optionally)
+indirect heating from the surrounding flat terrain:
+
+```bash
+# 25-degree south-facing slope at 30 N
+heat1d --lat 30 --slope 25 --slope-az 180
+
+# Works with the C backend and with --use-spice (Horizons AZ/EL)
+heat1d --backend c --lat 30 --slope 25 --slope-az 180
+```
+
+Notes: `--slope` is mutually exclusive with `--psr-d-D`, and cannot be
+combined with `--flux-file` (external flux files are assumed already
+slope-projected; use `generate-flux --slope` to create one). See the
+[Sloped Surfaces](slopes.md) theory page for the physics.
 
 ## YAML Configuration
 

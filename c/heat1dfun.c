@@ -287,6 +287,107 @@ int thermalModelCollect( profileT *p, int nyears_eq, int ndays_out,
 }
 
 
+/*
+ * collectFlatDiurnalCycle()
+ *
+ * Runs a flat-surface companion model to equilibrium and records one
+ * diurnal cycle of (a) surface temperature and (b) reflected solar flux
+ * of the flat terrain, for use as the indirect-flux table of a sloped
+ * run (see terrainFlux()).
+ *
+ * pflat must be a fully built flat profile (slopesin = 0, n_terr = 0)
+ * with layers populated (e.g. by tiProfile).  Output sample i
+ * corresponds to t = i * (rotperiod / n), with t = 0 = local noon.
+ *
+ * Writes only to stderr (stdout is parsed by the Python wrapper).
+ * Returns 1 on success, 0 on failure.
+ */
+int collectFlatDiurnalCycle( profileT *pflat, int n,
+                             double *Tflat_out, double *Fscat_out ) {
+
+  int i;
+  double nu, dec, r, time, dtime, dt, h, cosz, A;
+
+  /* Initialize grid and properties */
+  gridParams( pflat );
+  radParamProf( pflat );
+  thermCondProf( pflat );
+  heatCapProf( pflat );
+  getModelParams( pflat );
+
+  dt = pflat->rotperiod / n;
+
+  /* --- Equilibrated diurnal temperature cycle --- */
+  /* Preferred: Fourier solver output is already the periodic cycle,
+   * sampled at t = i*dt starting at local noon. */
+  double *lt_tmp = (double *)malloc(n * sizeof(double));
+  if ( !lt_tmp ) return 0;
+
+  if ( solveFourier(pflat, n, Tflat_out, lt_tmp, 1, NULL) != n ) {
+    /* Fallback: implicit equilibration + warmup, then record one day */
+    fprintf(stderr, "collectFlatDiurnalCycle: Fourier failed, "
+                    "falling back to implicit\n");
+    double equiltime = pflat->nyearseq * getSecondsPerYear( pflat );
+
+    pflat->solver = SOLVER_IMPLICIT;
+    nu = 0.0;
+    dtime = 0.0;
+    updateOrbit( dtime, &nu, &dec, &r, pflat->rau, pflat->obliq,
+                 pflat->ecc, pflat->omega_peri );
+    dtime = pflat->rotperiod / pflat->equil_nperday;
+    time = 0.0;
+    /* Equilibration + one warmup day */
+    while ( time < equiltime + pflat->rotperiod ) {
+      updateTemperatures( pflat, time, dtime, dec, r );
+      heatCapProf( pflat );
+      getModelParams( pflat );
+      thermCondProf( pflat );
+      time += dtime;
+      updateOrbit( dtime, &nu, &dec, &r, pflat->rau, pflat->obliq,
+                   pflat->ecc, pflat->omega_peri );
+    }
+    /* Re-initialize orbit to epoch (t=0 = noon) and record one day
+     * at the table cadence; sample i taken BEFORE the step at t = i*dt */
+    nu = 0.0;
+    dtime = 0.0;
+    updateOrbit( dtime, &nu, &dec, &r, pflat->rau, pflat->obliq,
+                 pflat->ecc, pflat->omega_peri );
+    time = 0.0;
+    for ( i = 0; i < n; i++ ) {
+      Tflat_out[i] = pflat->layer[0].t;
+      updateTemperatures( pflat, time, dt, dec, r );
+      heatCapProf( pflat );
+      getModelParams( pflat );
+      thermCondProf( pflat );
+      time += dt;
+      updateOrbit( dt, &nu, &dec, &r, pflat->rau, pflat->obliq,
+                   pflat->ecc, pflat->omega_peri );
+    }
+  }
+  free(lt_tmp);
+
+  /* --- Reflected solar flux of the flat terrain --- */
+  /* Pure geometry (no thermal state): F_scat = A(theta)*S/r^2*cosz */
+  nu = 0.0;
+  updateOrbit( 0.0, &nu, &dec, &r, pflat->rau, pflat->obliq,
+               pflat->ecc, pflat->omega_peri );
+  time = 0.0;
+  for ( i = 0; i < n; i++ ) {
+    h = fmod( TWOPI * time / pflat->rotperiod, TWOPI );
+    cosz = sin(dec)*sin(pflat->latitude)
+         + cos(dec)*cos(pflat->latitude)*cos(h);
+    cosz = 0.5 * (cosz + fabs(cosz));   /* clip below horizon */
+    A = albedoModel( pflat->albedo, acos(cosz), pflat->alb_a, pflat->alb_b );
+    Fscat_out[i] = A * (pflat->solar_const / (r*r)) * cosz;
+    time += dt;
+    updateOrbit( dt, &nu, &dec, &r, pflat->rau, pflat->obliq,
+                 pflat->ecc, pflat->omega_peri );
+  }
+
+  return 1;
+}
+
+
 double getSecondsPerYear( profileT *p ) {
 
   double secperyear, daysperyear;
@@ -452,10 +553,52 @@ int freeProfile( profileT *p ) {
 
 }
 
+/*
+ * terrainFlux()
+ *
+ * Absorbed indirect flux on a sloped surface from the surrounding flat
+ * terrain (thermal emission + reflected sunlight), interpolated from the
+ * periodic table recorded by collectFlatDiurnalCycle():
+ *
+ *   Q_ind(t) = sin^2(s/2) * [ emis^2 * sigma * T_flat^4(t mod P)
+ *                             + (1 - A0) * F_scat(t mod P) ]
+ *
+ * The thermal term is the flat-ground radiosity emis*sigma*T^4 absorbed
+ * with IR absorptivity emis (Kirchhoff), hence emis^2.  The reflected
+ * term absorbs the diffuse scattered sunlight with the normal-incidence
+ * albedo A0.  Table phase: sample 0 = local noon (t=0 epoch convention).
+ * Returns 0 when no table is attached (n_terr == 0).
+ */
+double terrainFlux( double time, profileT *p ) {
+
+  double hss, tday, fidx, frac, Tf, Fs;
+  int i0, i1;
+
+  if ( p->n_terr <= 0 || !p->terr_Tflat || !p->terr_Fscat )
+    return 0.0;
+
+  hss = 0.5 * (1.0 - p->slopecos);  /* sin^2(slope/2) */
+  if ( hss <= 0.0 )
+    return 0.0;
+
+  tday = fmod(time, p->rotperiod);
+  if ( tday < 0.0 ) tday += p->rotperiod;
+  fidx = tday / p->terr_dt;
+  i0 = ((int)fidx) % p->n_terr;
+  i1 = (i0 + 1) % p->n_terr;      /* periodic wrap */
+  frac = fidx - floor(fidx);
+
+  Tf = (1.0 - frac) * p->terr_Tflat[i0] + frac * p->terr_Tflat[i1];
+  Fs = (1.0 - frac) * p->terr_Fscat[i0] + frac * p->terr_Fscat[i1];
+
+  return hss * ( p->emis * p->emis * SIGMA * Tf*Tf*Tf*Tf
+               + (1.0 - p->albedo) * Fs );
+}
+
 void radFlux( double time, double dec, double r, profileT *p ) {
 
   double A;
-  double lat, h, inccos, hss, cosz, sinz, coslat, sinlat;
+  double lat, h, hw, inccos, cosz, sinz, coslat, sinlat;
   double hEW, gSO, sigmaEW, sigmaNS, sigmaH, gS;
   double latm, decm;
 
@@ -468,6 +611,12 @@ void radFlux( double time, double dec, double r, profileT *p ) {
   // "hour angle", in radians
   p->hourangle = fmod((TWOPI * time / p->rotperiod),TWOPI);
   h = p->hourangle;
+
+  // Wrapped hour angle in (-pi, pi] for the Braun & Mitchell sign
+  // functions below (morning = negative).  Using the raw h in [0, 2*pi)
+  // gives the wrong solar azimuth for all morning hours.
+  hw = h;
+  if ( hw > PI ) hw -= TWOPI;
 
   sinlat = sin(lat);
   coslat = cos(lat);
@@ -485,9 +634,9 @@ void radFlux( double time, double dec, double r, profileT *p ) {
 
   if ( sinz < 1e-10 ) {
     gSO = 0;
-  } else gSO = asin(fmin(1.0, fmax(-1.0, sin(h)*cos(dec)/sinz)));
+  } else gSO = asin(fmin(1.0, fmax(-1.0, sin(hw)*cos(dec)/sinz)));
 
-  if ( fabs(h) < hEW ) {
+  if ( fabs(hw) < hEW ) {
     sigmaEW = 1;
   } else sigmaEW = -1;
 
@@ -495,7 +644,7 @@ void radFlux( double time, double dec, double r, profileT *p ) {
     sigmaNS = 1;
   } else sigmaNS = -1;
 
-  if ( h ) {
+  if ( hw >= 0 ) {
     sigmaH = 1;
   } else sigmaH = -1;
 
@@ -503,22 +652,26 @@ void radFlux( double time, double dec, double r, profileT *p ) {
 
   inccos = cosz*(p->slopecos) + sinz*(p->slopesin)*cos(gS - p->az);
 
+  // Self-shadowing: no direct flux when the sun is below the flat
+  // horizon (cosz <= 0), even if the tilted surface geometrically
+  // "sees" it (inccos > 0) -- the surrounding terrain blocks it.
+  if ( cosz <= 0.0 ) inccos = 0.0;
+
   // Incidence and zenith angles are set to zero if the sun is below the horizon
   inccos = 0.5*(inccos + fabs(inccos));
   cosz = 0.5 * ( cosz + fabs(cosz) );
 
-  // Incidence angle-dependent albedo (Vasavada et al., JGR, 2012)
+  // Incidence angle-dependent albedo (Vasavada et al., JGR, 2012),
+  // evaluated at the local incidence angle on the (possibly tilted) surface
   A = albedoModel(p->albedo, acos(inccos), p->alb_a, p->alb_b);
 
-  // Total flux accounts for insolation and infrared from ground
-  hss = sin(0.5*acos(p->slopecos));
-  hss = hss*hss;
-  p->surfflux = (1.0 - A) * (p->solar_const / (r*r)) * ( inccos + hss*cosz );
+  // Absorbed direct insolation
+  p->surfflux = (1.0 - A) * (p->solar_const / (r*r)) * inccos;
 
-  if ( !(p->surfflux) ) {
-    p->surfflux = p->emis*SIGMA*pow(p->layer[0].t,4.0)*hss;
-    //p->surfflux = p->emis*FNIGHT*coslat*hss;
-  }
+  // Indirect terrain flux (thermal + reflected solar) from the flat
+  // companion table; view factor sin^2(slope/2).  Zero when no table
+  // is attached (flat surfaces or ground heating disabled).
+  p->surfflux += terrainFlux( time, p );
 
   // Bowl-shaped crater:
   /*
@@ -672,6 +825,10 @@ double surfTemp( profileT *p, double time, double dec, double r ) {
     if ( idx < 0 ) idx = 0;
     if ( idx >= p->flux_input_len ) idx = p->flux_input_len - 1;
     p->surfflux = p->flux_input[idx];
+    // Indirect terrain flux for sloped surfaces (external flux series
+    // carries the direct beam only; the file epoch is local noon,
+    // matching the terrain table phase)
+    p->surfflux += terrainFlux( time, p );
     // Still compute hour angle for local time output
     p->hourangle = fmod((TWOPI * time / p->rotperiod), TWOPI);
   } else {

@@ -159,6 +159,14 @@ typedef struct {
   const double *flux_input;  // absorbed flux values [W/m^2], length flux_input_len
   int flux_input_len;        // number of flux samples
   double flux_input_dt;      // uniform time spacing of flux samples [s]
+  // Terrain irradiance table from a flat companion run (sloped surfaces).
+  // Sample i corresponds to time t = i * terr_dt, with t=0 = local noon;
+  // lookups wrap periodically over one diurnal cycle.  n_terr = 0 disables
+  // the indirect terrain term.
+  const double *terr_Tflat;  // flat-terrain surface temperature [K]
+  const double *terr_Fscat;  // flat-terrain reflected solar A(theta)*S/r^2*cosz [W/m^2]
+  int    n_terr;             // table length (samples per day); 0 = none
+  double terr_dt;            // table spacing [s] = rotperiod / n_terr
   // Runtime-configurable parameters (replacing compile-time #defines)
   double solar_const;  // Solar constant [W/m^2]           (default: S0 #define)
   double chi;          // Radiative conductivity parameter  (default: CHI)
@@ -186,6 +194,9 @@ typedef struct {
 void thermalModel( profileT *p, double endtime, FILE *fpout );
 int thermalModelCollect( profileT *p, int nyears_eq, int ndays_out,
                          int nperday, double *T_surf, double *lt_out );
+int collectFlatDiurnalCycle( profileT *pflat, int n,
+                             double *Tflat_out, double *Fscat_out );
+double terrainFlux( double time, profileT *p );
 double getSecondsPerYear( profileT *p );
 void updateTemperatures( profileT *p, double time, double dtime, double dec, double r );
 void gridParams( profileT *p );

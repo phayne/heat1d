@@ -38,6 +38,11 @@ typedef struct {
     int    ndays;       /* Number of output days */
     int    solver;      /* SOLVER_EXPLICIT, SOLVER_CN, SOLVER_IMPLICIT, SOLVER_FOURIER */
 
+    /* Sloped surface */
+    double slope;          /* Surface slope [degrees]; 0 = flat */
+    double slope_azimuth;  /* Slope aspect [degrees clockwise from N: 0=N, 90=E] */
+    int    ground_heating; /* 1 = indirect terrain flux via flat companion run */
+
     /* Numerical parameters (matching Python Configurator) */
     double fourier_number;          /* F: must be <= 0.5 for stability */
     int    layers_per_skin_depth;   /* m: layers in upper skin depth */

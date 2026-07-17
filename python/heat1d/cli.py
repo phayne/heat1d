@@ -104,6 +104,13 @@ def _resolve_planet(name, overrides):
               help="PSR crater depth/diameter ratio (e.g. 0.2). Enables bowl-shaped crater PSR mode.")
 @click.option("--body-center", "body_center", is_flag=True,
               help="Force body-center Horizons query (for bodies without rotational models).")
+@click.option("--slope", type=float, default=None,
+              help="Surface slope [degrees, 0-90]. Default: 0 (flat).")
+@click.option("--slope-az", "slope_az", type=float, default=None,
+              help="Slope azimuth [degrees clockwise from N: 0=N, 90=E, 180=S]. Default: 0.")
+@click.option("--ground-heating/--no-ground-heating", "ground_heating", default=None,
+              help="Indirect thermal+reflected flux from surrounding flat terrain "
+                   "(default: on when slope > 0).")
 def main(
     config_file,
     lat,
@@ -133,6 +140,9 @@ def main(
     parent_body_id,
     psr_d_D,
     body_center,
+    slope,
+    slope_az,
+    ground_heating,
 ):
     """Run the heat1d 1-D thermal model.
 
@@ -165,7 +175,9 @@ def main(
 
     # --- Compare mode ---
     if compare:
-        _run_compare(lat, solver, albedo, quiet)
+        _run_compare(lat, solver, albedo, quiet,
+                     slope=slope, slope_az=slope_az,
+                     ground_heating=ground_heating)
         return
 
     # --- Build configuration ---
@@ -197,6 +209,29 @@ def main(
     run_ndays = ndays
     if run_ndays is None:
         run_ndays = yaml_data.get("ndays", 1)
+
+    # Sloped surface (CLI > YAML > default)
+    run_slope = slope if slope is not None else float(yaml_data.get("slope", 0.0))
+    run_slope_az = (
+        slope_az if slope_az is not None
+        else float(yaml_data.get("slope_azimuth", 0.0))
+    )
+    if ground_heating is None:
+        ground_heating = bool(yaml_data.get("ground_heating", True))
+    if not 0.0 <= run_slope <= 90.0:
+        raise click.ClickException("--slope must be in [0, 90] degrees")
+    run_slope_az %= 360.0
+    if run_slope > 0 and psr_d_D is not None:
+        raise click.ClickException(
+            "--slope and --psr-d-D are mutually exclusive"
+        )
+    if run_slope > 0 and flux_file is not None:
+        raise click.ClickException(
+            "--flux-file cannot be combined with --slope: an external flux "
+            "file is assumed to already be slope-projected. Generate a "
+            "slope-aware flux file with generate-flux --slope instead, or "
+            "drop --slope."
+        )
 
     run_planet_name = planet_name
     if run_planet_name is None:
@@ -231,6 +266,31 @@ def main(
         planet_overrides["albedo"] = albedo
 
     planet = _resolve_planet(run_planet_name, planet_overrides)
+
+    # --- Constant thermal inertia override ---
+    constant_ti = planet_cfg.get("constant_ti") if isinstance(planet_cfg, dict) else None
+    if constant_ti is not None:
+        from .properties import heatCapacity
+        ti = float(constant_ti)
+        no_tdep = planet_cfg.get("ti_no_tdep", False)
+        T_ref = ((1 - planet.albedo) * planet.S
+                 / (planet.emissivity * 5.670374419e-8)) ** 0.25
+        if no_tdep:
+            cp_ref = planet.cp0
+            config.chi = 0.0
+            planet.cp_fixed = planet.cp0
+        else:
+            cp_ref = float(heatCapacity(planet, T_ref))
+        rho_ref = planet.rhod
+        k_ref = ti ** 2 / (rho_ref * cp_ref)
+        planet.ks = k_ref
+        planet.kd = k_ref
+        planet.rhos = rho_ref
+        planet.rhod = rho_ref
+        planet.H = 0.0
+        if not quiet:
+            click.echo(f"  Constant TI={ti:.1f}: k={k_ref:.4e}, "
+                       f"rho={rho_ref:.0f}, T_ref={T_ref:.1f} K")
 
     # For Custom planet with SPICE, auto-query Horizons for orbital data
     if run_planet_name == "Custom" and use_spice and body_id:
@@ -339,6 +399,8 @@ def main(
                 eclipses=not no_eclipses,
                 parent_body_id=parent_body_id,
                 body_center=body_center,
+                slope_deg=run_slope,
+                slope_az_deg=run_slope_az,
             )
         except HorizonsError as exc:
             raise click.ClickException(f"Horizons query failed: {exc}")
@@ -386,6 +448,10 @@ def main(
         click.echo(f"  Chi:      {config.chi}")
         if psr_d_D is not None:
             click.echo(f"  PSR:      d/D={psr_d_D:.2f} (bowl-shaped crater)")
+        if run_slope > 0:
+            gh_label = "on" if ground_heating else "off"
+            click.echo(f"  Slope:    {run_slope:.1f} deg @ az {run_slope_az:.0f} deg "
+                       f"(ground heating {gh_label})")
         if config_file:
             click.echo(f"  Config:   {config_file}")
 
@@ -433,12 +499,22 @@ def main(
             nperday_output=c_nperday,
             adaptive_tol=c_adaptive,
             flux_series=flux_series, flux_dt=flux_dt,
+            slope=np.deg2rad(run_slope),
+            slope_az=np.deg2rad(run_slope_az),
+            ground_heating=ground_heating,
         )
     else:
         lon_rad = np.deg2rad(lon)
+        flux_noon_idx = None
+        if use_spice and flux_series is not None:
+            flux_noon_idx = spice_meta.get("noon_idx")
         model = Model(planet=planet, lat=lat_rad, lon=lon_rad, ndays=run_ndays,
                       config=config, flux_series=flux_series, flux_dt=flux_dt,
-                      psr_d_D=psr_d_D)
+                      psr_d_D=psr_d_D,
+                      slope=np.deg2rad(run_slope),
+                      slope_az=np.deg2rad(run_slope_az),
+                      ground_heating=ground_heating if run_slope > 0 else None,
+                      flux_noon_idx=flux_noon_idx)
 
     if not quiet:
         click.echo(f"Running model (backend={backend})...")
@@ -529,7 +605,8 @@ def _run_c_validation(quiet, no_plot=False, output_dir=None):
     run_c_validation_suite(output_dir=out, quiet=quiet, no_plot=no_plot)
 
 
-def _run_compare(lat, solver, albedo, quiet):
+def _run_compare(lat, solver, albedo, quiet, slope=None, slope_az=None,
+                 ground_heating=None):
     """Compare C vs Python backends."""
     try:
         from .c_wrapper import compare_c_python
@@ -541,12 +618,19 @@ def _run_compare(lat, solver, albedo, quiet):
     run_lat = lat if lat is not None else 0.0
     run_solver = solver if solver is not None else "explicit"
     run_albedo = albedo if albedo is not None else 0.12
+    run_slope = slope if slope is not None else 0.0
+    run_slope_az = slope_az if slope_az is not None else 0.0
+    run_gh = ground_heating if ground_heating is not None else True
 
     if not quiet:
-        click.echo(f"Comparing C vs Python (lat={run_lat}, solver={run_solver}, "
-                    f"albedo={run_albedo})...")
+        msg = (f"Comparing C vs Python (lat={run_lat}, solver={run_solver}, "
+               f"albedo={run_albedo}")
+        if run_slope > 0:
+            msg += f", slope={run_slope} deg @ az {run_slope_az} deg"
+        click.echo(msg + ")...")
     compare_c_python(
         lat_deg=run_lat, solver=run_solver, albedo=run_albedo, quiet=quiet,
+        slope_deg=run_slope, slope_az_deg=run_slope_az, ground_heating=run_gh,
     )
 
 

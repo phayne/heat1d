@@ -18,6 +18,13 @@ from .boundary import surfTemp, botTemp
 from .solvers import getTimeStep
 from .profile import Profile
 from .model import Model
+from .terrain import (
+    slope_incidence_cos,
+    ground_view_factor,
+    sky_view_factor,
+    direct_slope_flux,
+    indirect_flux_series,
+)
 
 # Also keep backward compat with `from .main import *`
 from .main import *

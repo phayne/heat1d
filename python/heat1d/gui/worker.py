@@ -115,6 +115,11 @@ class SimulationWorker(QThread):
         # PSR crater
         psr_d_D = p.get("psr_d_D")
 
+        # Sloped surface
+        slope_deg = p.get("slope_deg")
+        slope_az_deg = p.get("slope_az_deg") or 0.0
+        ground_heating = p.get("ground_heating", True)
+
         # Thermophysical overrides
         thermo_auto = p.get("thermo_auto", True)
         thermo = p.get("thermo", {})
@@ -172,6 +177,35 @@ class SimulationWorker(QThread):
             # Chi is handled via Configurator, but update it from thermo too
             if "chi" in thermo:
                 chi = thermo["chi"]
+
+        # Constant thermal inertia override
+        if thermo.get("constant_ti"):
+            from ..properties import heatCapacity
+            planet = copy.copy(planet)
+            ti = thermo["ti_value"]
+            no_tdep = thermo.get("ti_no_tdep", False)
+            # Reference temperature (radiative equilibrium)
+            T_ref = ((1 - planet.albedo) * planet.S
+                     / (planet.emissivity * 5.670374419e-8)) ** 0.25
+            # Reference heat capacity
+            if no_tdep:
+                cp_ref = planet.cp0
+                chi = 0.0
+                planet.cp_fixed = planet.cp0
+            else:
+                cp_ref = float(heatCapacity(planet, T_ref))
+            # Uniform density, conductivity from TI
+            rho_ref = planet.rhod
+            k_ref = ti ** 2 / (rho_ref * cp_ref)
+            planet.ks = k_ref
+            planet.kd = k_ref
+            planet.rhos = rho_ref
+            planet.rhod = rho_ref
+            planet.H = 0.0
+            self.progress.emit(
+                f"Constant TI={ti:.1f}: k={k_ref:.4e}, "
+                f"rho={rho_ref:.0f}, T_ref={T_ref:.1f} K"
+            )
 
         # Fill missing thermophysical properties from Moon defaults
         missing = [k for k in _REQUIRED_THERMO if getattr(planet, k, None) is None]
@@ -260,6 +294,8 @@ class SimulationWorker(QThread):
                     eclipses=eclipses,
                     parent_body_id=parent_body_id if parent_body_id else None,
                     body_center=body_center,
+                    slope_deg=slope_deg or 0.0,
+                    slope_az_deg=slope_az_deg,
                 )
                 metadata = spice_meta
                 if flux_dt > 0:
@@ -304,6 +340,10 @@ class SimulationWorker(QThread):
             flux_dt=flux_dt,
             custom_layers=custom_layers,
             psr_d_D=psr_d_D,
+            slope=np.deg2rad(slope_deg) if slope_deg else 0.0,
+            slope_az=np.deg2rad(slope_az_deg),
+            ground_heating=ground_heating if slope_deg else None,
+            flux_noon_idx=metadata.get("noon_idx") if use_spice else None,
         )
         model.run()
 
@@ -316,6 +356,8 @@ class SimulationWorker(QThread):
             label += f" lon={lon_deg:.1f}"
         if psr_d_D is not None:
             label += f" PSR d/D={psr_d_D:.2f}"
+        if slope_deg:
+            label += f" slope={slope_deg:.0f}° az={slope_az_deg:.0f}°"
         if sweep_info:
             key, val = sweep_info
             sym = _PROP_LABELS.get(key, key)
@@ -349,6 +391,9 @@ class SimulationWorker(QThread):
             "use_spice": use_spice,
             "custom_layers": len(custom_layers) if custom_layers else 0,
             "psr_d_D": psr_d_D,
+            "slope_deg": slope_deg,
+            "slope_az_deg": slope_az_deg if slope_deg else None,
+            "ground_heating": ground_heating if slope_deg else None,
         }
 
         record = RunRecord(

@@ -147,6 +147,18 @@ class CModel:
         Output samples per day. Default 480 (C default).
     adaptive_tol : float, optional
         Adaptive step-doubling tolerance [K]. 0 disables. Default 0.
+    slope : float, optional
+        Surface slope in **radians** [0, pi/2]. Default 0 (flat).
+        Sloped runs use the YAML ``--config`` invocation mode of the C
+        executable; flat runs keep the legacy positional argv.
+    slope_az : float, optional
+        Slope azimuth in **radians**, clockwise from north (0 = N,
+        pi/2 = E). Default 0.
+    ground_heating : bool, optional
+        Indirect thermal + reflected flux from the surrounding flat
+        terrain (via an internal flat companion run in the C code;
+        roughly doubles the C runtime). Default True; only active when
+        slope > 0.
     c_dir : Path, optional
         Path to the C source directory.
     """
@@ -154,7 +166,8 @@ class CModel:
     def __init__(self, planet, lat, ndays=1, solver="explicit",
                  ti=55.0, h=0.06, equil_nperday=480, nperday_output=480,
                  adaptive_tol=0.0, flux_series=None, flux_dt=None,
-                 c_dir=None):
+                 slope=0.0, slope_az=0.0, ground_heating=True,
+                 c_dir=None, _force_yaml=False):
         self.planet = planet
         self.lat = lat
         self.ndays = ndays
@@ -166,7 +179,11 @@ class CModel:
         self.adaptive_tol = adaptive_tol
         self.flux_series = np.asarray(flux_series) if flux_series is not None else None
         self.flux_dt = flux_dt
+        self.slope = slope
+        self.slope_az = slope_az
+        self.ground_heating = bool(ground_heating)
         self._c_dir = Path(c_dir) if c_dir is not None else C_DIR
+        self._force_yaml = _force_yaml  # testing hook: use YAML mode at slope=0
 
         # Populated by run()
         self.T = None
@@ -174,6 +191,24 @@ class CModel:
         self.profile = None
         self.N_steps = 0
         self.N_z = 0
+
+    def _write_config_yaml(self, path):
+        """Write a temp YAML config for the C --config invocation mode."""
+        path.write_text(
+            "planet:\n"
+            f"  name: \"{getattr(self.planet, 'name', 'Moon')}\"\n"
+            f"  albedo: {self.planet.albedo:.6f}\n"
+            f"latitude: {np.rad2deg(self.lat):.6f}\n"
+            f"ndays: {self.ndays}\n"
+            f"solver: \"{self.solver}\"\n"
+            f"slope: {np.rad2deg(self.slope):.6f}\n"
+            f"slope_azimuth: {np.rad2deg(self.slope_az):.6f}\n"
+            f"ground_heating: {'true' if self.ground_heating else 'false'}\n"
+            "numerical:\n"
+            f"  equil_nperday: {self.equil_nperday}\n"
+            f"  nperday_output: {self.nperday_output}\n"
+            f"  adaptive_tolerance: {self.adaptive_tol:.4f}\n"
+        )
 
     def run(self):
         """Run the C thermal model and parse output.
@@ -188,24 +223,40 @@ class CModel:
         # Run in a temp directory so output files don't clash
         tmpdir = tempfile.mkdtemp(prefix="heat1d_c_")
         try:
-            cmd = [
-                str(exe),
-                f"{lat_deg:.6f}",
-                f"{self.ti:.2f}",
-                f"{self.h:.4f}",
-                f"{self.planet.albedo:.4f}",
-                str(solver_int),
-                str(self.equil_nperday),
-                str(self.nperday_output),
-                f"{self.adaptive_tol:.2f}",
-            ]
+            if self.slope > 0.0 or self._force_yaml:
+                # YAML --config mode (required for slope parameters)
+                cfg_path = Path(tmpdir) / "config.yaml"
+                self._write_config_yaml(cfg_path)
+                cmd = [
+                    str(exe), "--config", str(cfg_path),
+                    "--ti", f"{self.ti:.2f}",
+                    "--H", f"{self.h:.4f}",
+                ]
+                if self.flux_series is not None:
+                    from .flux import write_flux_file
+                    flux_path = Path(tmpdir) / "flux_input.txt"
+                    write_flux_file(flux_path, self.flux_series, self.flux_dt)
+                    cmd += ["--flux", str(flux_path)]
+            else:
+                # Legacy positional argv (flat surfaces)
+                cmd = [
+                    str(exe),
+                    f"{lat_deg:.6f}",
+                    f"{self.ti:.2f}",
+                    f"{self.h:.4f}",
+                    f"{self.planet.albedo:.4f}",
+                    str(solver_int),
+                    str(self.equil_nperday),
+                    str(self.nperday_output),
+                    f"{self.adaptive_tol:.2f}",
+                ]
 
-            # Write external flux file if provided
-            if self.flux_series is not None:
-                from .flux import write_flux_file
-                flux_path = Path(tmpdir) / "flux_input.txt"
-                write_flux_file(flux_path, self.flux_series, self.flux_dt)
-                cmd.append(str(flux_path))
+                # Write external flux file if provided
+                if self.flux_series is not None:
+                    from .flux import write_flux_file
+                    flux_path = Path(tmpdir) / "flux_input.txt"
+                    write_flux_file(flux_path, self.flux_series, self.flux_dt)
+                    cmd.append(str(flux_path))
 
             result = subprocess.run(
                 cmd,
@@ -416,7 +467,8 @@ def run_c_validation_suite(output_dir="output/c_validation", quiet=False,
 
 
 def compare_c_python(lat_deg=0.0, solver="explicit", albedo=0.12,
-                     ti=55.0, h=0.06, ndays=1, quiet=False):
+                     ti=55.0, h=0.06, ndays=1, quiet=False,
+                     slope_deg=0.0, slope_az_deg=0.0, ground_heating=True):
     """Run both C and Python models and compare results.
 
     Parameters
@@ -435,6 +487,12 @@ def compare_c_python(lat_deg=0.0, solver="explicit", albedo=0.12,
         Number of output days.
     quiet : bool
         Suppress output.
+    slope_deg : float
+        Surface slope [degrees]. Default 0 (flat).
+    slope_az_deg : float
+        Slope azimuth [degrees clockwise from N]. Default 0.
+    ground_heating : bool
+        Indirect terrain flux for sloped surfaces. Default True.
 
     Returns
     -------
@@ -449,6 +507,8 @@ def compare_c_python(lat_deg=0.0, solver="explicit", albedo=0.12,
     from .model import Model
 
     lat_rad = np.deg2rad(lat_deg)
+    slope_rad = np.deg2rad(slope_deg)
+    slope_az_rad = np.deg2rad(slope_az_deg)
 
     # --- Run Python model ---
     # Match C code grid/output parameters: NN=5 (n=5), NSKIN=10, NSKINBOT=20,
@@ -461,14 +521,18 @@ def compare_c_python(lat_deg=0.0, solver="explicit", albedo=0.12,
     planet_py = copy.copy(planets.Moon)
     planet_py.H = h
     planet_py.albedo = albedo
-    model_py = Model(planet=planet_py, lat=lat_rad, ndays=ndays, config=config)
+    model_py = Model(planet=planet_py, lat=lat_rad, ndays=ndays, config=config,
+                     slope=slope_rad, slope_az=slope_az_rad,
+                     ground_heating=ground_heating if slope_rad > 0 else None)
     model_py.run()
 
     # --- Run C model ---
     planet_c = copy.copy(planets.Moon)
     planet_c.albedo = albedo
     model_c = CModel(planet=planet_c, lat=lat_rad, ndays=ndays,
-                     solver=solver, ti=ti, h=h)
+                     solver=solver, ti=ti, h=h,
+                     slope=slope_rad, slope_az=slope_az_rad,
+                     ground_heating=ground_heating)
     model_c.run()
 
     # --- Compare ---

@@ -503,44 +503,45 @@ def compute_rectification_exact(T_surf_hat, depth_ratios, flux_ratios,
     return J_pump, k_mean_eff
 
 
-def precompute_diurnal_flux(planet, lat, nsteps, dec=0, r=None, lon=0.0):
-    """Pre-compute absorbed surface flux for one diurnal cycle.
+def _diurnal_geometry(planet, lat, nsteps, dec=0, r=None, lon=0.0):
+    """Solar geometry on a uniform grid over one diurnal cycle.
 
-    Uses the existing insolation code (orbit geometry, angle-dependent albedo).
-    For bodies with significant eccentricity (e > 0.01), computes the full
-    orbital trajectory over one solar day, including time-varying distance
-    and declination.
+    For bodies with significant eccentricity (e > 0.05), computes the
+    full orbital trajectory over one solar day, including time-varying
+    distance and declination; otherwise uses the circular-orbit
+    approximation with fixed ``dec`` and ``r``.
 
     Parameters
     ----------
     planet : object
-        Planet object with albedo, S, albedoCoef, day, rAU, year,
-        eccentricity, obliquity, Lp attributes.
+        Planet object with day, rAU, year, eccentricity, obliquity,
+        Lp attributes.
     lat : float
         Latitude [rad].
     nsteps : int
         Number of time steps per diurnal cycle.
     dec : float
-        Solar declination [rad]. Default 0 (equinox). Used only for
-        circular orbit approximation (ecc <= 0.01).
+        Solar declination [rad] (circular branch only).
     r : float or None
-        Heliocentric distance [AU]. Default: planet.rAU. Used only for
-        circular orbit approximation (ecc <= 0.01).
+        Heliocentric distance [AU] (circular branch only).
     lon : float
-        Observer longitude [rad]. Default 0.
+        Observer longitude [rad].
 
     Returns
     -------
-    flux : np.ndarray
-        Absorbed surface flux at each time step [W/m^2].
+    cos_z : np.ndarray
+        UNclipped cosine of the solar zenith angle (negative at night).
+    r_t : np.ndarray or float
+        Heliocentric distance [AU] (array for eccentric orbits).
     dt : float
         Time step [s].
+    h : np.ndarray
+        Hour angle [rad] at each step.
+    dec_t : np.ndarray or float
+        Solar declination [rad] (array for eccentric orbits).
     """
     dt = planet.day / nsteps
-    Sabs = planet.S * (1.0 - planet.albedo)
     t = np.arange(nsteps) * dt
-    a_coef = planet.albedoCoef[0]
-    b_coef = planet.albedoCoef[1]
 
     ecc = planet.eccentricity
     if ecc > 0.05:
@@ -562,22 +563,75 @@ def precompute_diurnal_flux(planet, lat, nsteps, dec=0, r=None, lon=0.0):
         obliq = planet.obliquity
         Lp = planet.Lp if planet.Lp is not None else 0.0
         dec_t = np.arcsin(np.sin(obliq) * np.sin(nu + Lp))
-
-        c = orbits.cosSolarZenith(lat, dec_t, h)
-        inc = np.arccos(c)
-        A_var = albedoVar(planet.albedo, a_coef, b_coef, inc)
-        f = (1.0 - A_var) / (1.0 - planet.albedo)
-        flux = f * Sabs * (r_t / planet.rAU) ** -2 * c
     else:
-        # Circular orbit approximation (original formula)
-        if r is None:
-            r = planet.rAU
+        # Circular orbit approximation
+        r_t = planet.rAU if r is None else r
+        dec_t = dec
         h = orbits.hourAngle(t, planet.day)
-        c = orbits.cosSolarZenith(lat, dec, h)
-        inc = np.arccos(c)
-        A_var = albedoVar(planet.albedo, a_coef, b_coef, inc)
-        f = (1.0 - A_var) / (1.0 - planet.albedo)
-        flux = f * Sabs * (r / planet.rAU) ** -2 * c
+
+    cos_z = orbits.cosSolarZenith(lat, dec_t, h, clip=False)
+    return cos_z, r_t, dt, h, dec_t
+
+
+def precompute_diurnal_flux(planet, lat, nsteps, dec=0, r=None, lon=0.0,
+                            slope=0.0, slope_az=0.0):
+    """Pre-compute absorbed surface flux for one diurnal cycle.
+
+    Uses the existing insolation code (orbit geometry, angle-dependent albedo).
+    For bodies with significant eccentricity (e > 0.05), computes the full
+    orbital trajectory over one solar day, including time-varying distance
+    and declination.
+
+    Parameters
+    ----------
+    planet : object
+        Planet object with albedo, S, albedoCoef, day, rAU, year,
+        eccentricity, obliquity, Lp attributes.
+    lat : float
+        Latitude [rad].
+    nsteps : int
+        Number of time steps per diurnal cycle.
+    dec : float
+        Solar declination [rad]. Default 0 (equinox). Used only for
+        circular orbit approximation (ecc <= 0.05).
+    r : float or None
+        Heliocentric distance [AU]. Default: planet.rAU. Used only for
+        circular orbit approximation (ecc <= 0.05).
+    lon : float
+        Observer longitude [rad]. Default 0.
+    slope : float
+        Surface slope [rad]. Default 0 (flat).
+    slope_az : float
+        Slope azimuth [rad], clockwise from north. Default 0.
+
+    Returns
+    -------
+    flux : np.ndarray
+        Absorbed direct surface flux at each time step [W/m^2].
+        (Indirect terrain flux for sloped surfaces is added separately
+        by the Model; see heat1d.terrain.)
+    dt : float
+        Time step [s].
+    """
+    Sabs = planet.S * (1.0 - planet.albedo)
+    a_coef = planet.albedoCoef[0]
+    b_coef = planet.albedoCoef[1]
+
+    cos_z, r_t, dt, h, dec_t = _diurnal_geometry(
+        planet, lat, nsteps, dec=dec, r=r, lon=lon
+    )
+
+    if slope > 0.0:
+        from .terrain import slope_incidence_cos
+        az_sun = orbits.solarAzimuth(lat, dec_t, h)
+        c = slope_incidence_cos(cos_z, az_sun, slope, slope_az)
+    else:
+        c = 0.5 * (cos_z + np.abs(cos_z))  # clip below horizon
+
+    inc = np.arccos(np.clip(c, 0.0, 1.0))
+    A_var = albedoVar(planet.albedo, a_coef, b_coef, inc)
+    f = (1.0 - A_var) / (1.0 - planet.albedo)
+    flux = f * Sabs * (r_t / planet.rAU) ** -2 * c
 
     return flux, dt
 

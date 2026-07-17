@@ -532,13 +532,21 @@ def _parse_horizons_date(date_str):
 # Flux computation
 # ---------------------------------------------------------------------------
 
-def horizons_to_flux(solar_elevation_deg, observer_range_au, planet):
+def horizons_to_flux(solar_elevation_deg, observer_range_au, planet,
+                     azimuth_deg=None, slope=0.0, slope_az=0.0):
     """Convert Horizons ephemeris to absorbed surface flux.
 
     Applies the angle-dependent albedo model from Keihm (1984) /
     Vasavada et al. (2012) / Hayne et al. (2017, Eq. A8), matching the
     physics in :meth:`Model.surfFlux` and
     :func:`generate_flux.compute_flux_array`.
+
+    For sloped surfaces (``slope > 0``) the direct beam is projected
+    onto the tilted surface using the parsed solar azimuth, with
+    self-shadowing (zero flux when the sun is below the flat horizon
+    or behind the slope), and the albedo is evaluated at the local
+    incidence angle.  Only the *direct* flux is computed here; indirect
+    terrain flux (ground heating) is added by the Model.
 
     Parameters
     ----------
@@ -548,25 +556,46 @@ def horizons_to_flux(solar_elevation_deg, observer_range_au, planet):
         Sun–observer distance [AU].
     planet : object
         Planet object (needs ``S``, ``albedo``, ``albedoCoef``, ``rAU``).
+    azimuth_deg : np.ndarray or None
+        Solar azimuth [degrees, clockwise from north] — required when
+        ``slope > 0`` (Horizons ``AZ`` column).
+    slope : float
+        Surface slope [rad].  Default 0 (flat).
+    slope_az : float
+        Slope azimuth [rad], clockwise from north.  Default 0.
 
     Returns
     -------
     flux : np.ndarray
-        Absorbed surface flux [W/m²].
+        Absorbed direct surface flux [W/m²].
     """
     elev = np.asarray(solar_elevation_deg, dtype=float)
     r = np.asarray(observer_range_au, dtype=float)
 
-    # Solar zenith angle (= incidence angle for horizontal surface)
-    zenith_rad = np.deg2rad(90.0 - elev)
-    cos_z = np.cos(zenith_rad)
+    if slope > 0.0:
+        if azimuth_deg is None:
+            raise ValueError(
+                "azimuth_deg is required when slope > 0"
+            )
+        from .terrain import slope_incidence_cos
+        # Unclipped zenith cosine = sin(elevation); negative below horizon
+        cos_z_raw = np.sin(np.deg2rad(elev))
+        az_sun = np.deg2rad(np.asarray(azimuth_deg, dtype=float))
+        cos_i = slope_incidence_cos(cos_z_raw, az_sun, slope, slope_az)
+        night = cos_i <= 0.0
+        # Local incidence angle for the albedo model
+        inc = np.arccos(np.clip(cos_i, 0.0, 1.0))
+    else:
+        # Solar zenith angle (= incidence angle for horizontal surface)
+        zenith_rad = np.deg2rad(90.0 - elev)
+        cos_i = np.cos(zenith_rad)
 
-    # Sun below horizon → zero flux
-    night = elev <= 0.0
-    cos_z[night] = 0.0
+        # Sun below horizon → zero flux
+        night = elev <= 0.0
+        cos_i = np.where(night, 0.0, cos_i)
 
-    # Incidence angle for albedo model (clip to [0, π/2])
-    inc = np.clip(zenith_rad, 0.0, np.pi / 2.0)
+        # Incidence angle for albedo model (clip to [0, π/2])
+        inc = np.clip(zenith_rad, 0.0, np.pi / 2.0)
 
     # Angle-dependent albedo
     a_coef = planet.albedoCoef[0]
@@ -580,10 +609,10 @@ def horizons_to_flux(solar_elevation_deg, observer_range_au, planet):
     Sabs = planet.S * (1.0 - planet.albedo)
 
     # Inverse-square distance scaling
-    flux = f * Sabs * (planet.rAU / r) ** 2 * cos_z
+    flux = f * Sabs * (planet.rAU / r) ** 2 * cos_i
 
     # Ensure no negative flux from numerical edge cases
-    flux[night] = 0.0
+    flux = np.where(night, 0.0, flux)
 
     return flux
 
@@ -1010,7 +1039,8 @@ def _fetch_body_center(bid, lat_deg, lon_deg, start_time, stop_time,
 def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
                      body_id=None, output_interval_s=None, planet_day_s=None,
                      planet=None, timeout=60, eclipses=True,
-                     parent_body_id=None, body_center=False):
+                     parent_body_id=None, body_center=False,
+                     slope_deg=0.0, slope_az_deg=0.0):
     """Query Horizons and return an absorbed-flux array ready for the Model.
 
     This is the primary entry point used by the CLI.
@@ -1060,6 +1090,15 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
         If ``True``, force body-center query mode (no rotational model
         needed).  If ``False`` (default), try surface-point query first
         and fall back to body-center on failure.
+    slope_deg : float
+        Surface slope [degrees].  Default 0 (flat).  When > 0 the
+        direct flux is projected onto the tilted surface using the
+        parsed solar azimuth/elevation, with self-shadowing.  Only
+        supported in surface-observer mode.  Eclipse reductions apply
+        to the direct beam only (indirect terrain flux, added later by
+        the Model, is not eclipsed — a second-order effect).
+    slope_az_deg : float
+        Slope azimuth [degrees, clockwise from north: 0=N, 90=E].
 
     Returns
     -------
@@ -1068,7 +1107,10 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
     dt : float
         Time spacing [seconds].
     metadata : dict
-        Query metadata including optional ``eclipse_info`` and ``mode``.
+        Query metadata including optional ``eclipse_info``, ``mode``,
+        and ``noon_idx`` (index of maximum solar elevation within the
+        first diurnal cycle — used by the Model to phase-align sloped
+        flux series whose peak is not at local noon).
 
     Raises
     ------
@@ -1098,6 +1140,12 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
 
     # ----- Body-center path (forced) -----
     if body_center:
+        if slope_deg > 0.0:
+            raise HorizonsError(
+                "Sloped surfaces are not yet supported with body-center "
+                "queries (no solar azimuth available). Use the "
+                "surface-observer mode."
+            )
         return _fetch_body_center(
             bid, lat_deg, lon_deg, start_time, stop_time,
             step_str, dt, planet, timeout,
@@ -1133,6 +1181,11 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
         if ("No rotational model" in err_msg
                 or "Cannot find central body" in err_msg
                 or "cannot be used as the center" in err_msg):
+            if slope_deg > 0.0:
+                raise HorizonsError(
+                    "Sloped surfaces require a surface-observer query, "
+                    f"which is not available for body '{bid}': {exc}"
+                ) from exc
             warnings.warn(
                 f"Surface observer not available for body '{bid}': {exc}. "
                 f"Falling back to body-center query with analytical rotation.",
@@ -1153,7 +1206,20 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
         result["solar_elevation_deg"],
         result["observer_range_au"],
         planet,
+        azimuth_deg=result.get("azimuth_deg"),
+        slope=np.deg2rad(slope_deg),
+        slope_az=np.deg2rad(slope_az_deg),
     )
+
+    # Local noon = maximum solar elevation within the first diurnal
+    # cycle.  Valid regardless of slope (unlike argmax of the flux).
+    day_s = planet_day_s or getattr(planet, "day", None)
+    elev_arr = np.asarray(result["solar_elevation_deg"], dtype=float)
+    if day_s and dt > 0:
+        n_first_day = min(int(round(day_s / dt)), len(elev_arr))
+    else:
+        n_first_day = len(elev_arr)
+    noon_idx = int(np.argmax(elev_arr[:max(n_first_day, 1)]))
 
     # Apply eclipse reductions if applicable
     eclipse_info = None
@@ -1179,6 +1245,7 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
         "times_utc": result["times_utc"],
         "eclipse_info": eclipse_info,
         "mode": "surface_observer",
+        "noon_idx": noon_idx,
     }
 
     return flux, dt, metadata

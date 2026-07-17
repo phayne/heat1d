@@ -38,7 +38,7 @@ from .properties import albedoVar
 
 def compute_flux_array(planet, lat_rad, nsteps, t_start_hr=0.0,
                        t_stop_hr=24.0, dec_rad=0.0, r=None,
-                       lon=0.0):
+                       lon=0.0, slope=0.0, slope_az=0.0):
     """Compute absorbed solar flux over a local-time window.
 
     Parameters
@@ -55,11 +55,18 @@ def compute_flux_array(planet, lat_rad, nsteps, t_start_hr=0.0,
     t_stop_hr : float
         Stop local time [decimal hours].
     dec_rad : float
-        Solar declination [rad]. Used only for circular orbit (ecc <= 0.01).
+        Solar declination [rad]. Used only for circular orbit (ecc <= 0.05).
     r : float or None
-        Heliocentric distance [AU]. Used only for circular orbit (ecc <= 0.01).
+        Heliocentric distance [AU]. Used only for circular orbit (ecc <= 0.05).
     lon : float
         Observer longitude [rad]. Default 0.
+    slope : float
+        Surface slope [rad]. Default 0 (flat).  When > 0 the direct
+        beam is projected onto the tilted surface with self-shadowing
+        (heat1d.terrain).  Note: only the *direct* flux is included;
+        indirect terrain flux (ground heating) is not.
+    slope_az : float
+        Slope azimuth [rad], clockwise from north (0 = N). Default 0.
 
     Returns
     -------
@@ -97,22 +104,23 @@ def compute_flux_array(planet, lat_rad, nsteps, t_start_hr=0.0,
         obliq = planet.obliquity
         Lp = planet.Lp if planet.Lp is not None else 0.0
         dec_t = np.arcsin(np.sin(obliq) * np.sin(nu + Lp))
-
-        c = orbits.cosSolarZenith(lat_rad, dec_t, h)
-        inc = np.arccos(c)
-        A_var = albedoVar(planet.albedo, a_coef, b_coef, inc)
-        f = (1.0 - A_var) / (1.0 - planet.albedo)
-        flux = f * Sabs * (r_t / planet.rAU) ** -2 * c
     else:
         # Circular orbit approximation
-        if r is None:
-            r = planet.rAU
+        r_t = planet.rAU if r is None else r
+        dec_t = dec_rad
         h = orbits.hourAngle(t, planet.day)
-        c = orbits.cosSolarZenith(lat_rad, dec_rad, h)
-        inc = np.arccos(c)
-        A_var = albedoVar(planet.albedo, a_coef, b_coef, inc)
-        f = (1.0 - A_var) / (1.0 - planet.albedo)
-        flux = f * Sabs * (r / planet.rAU) ** -2 * c
+
+    cos_z = orbits.cosSolarZenith(lat_rad, dec_t, h, clip=False)
+    if slope > 0.0:
+        from .terrain import slope_incidence_cos
+        az_sun = orbits.solarAzimuth(lat_rad, dec_t, h)
+        c = slope_incidence_cos(cos_z, az_sun, slope, slope_az)
+    else:
+        c = 0.5 * (cos_z + np.abs(cos_z))
+    inc = np.arccos(np.clip(c, 0.0, 1.0))
+    A_var = albedoVar(planet.albedo, a_coef, b_coef, inc)
+    f = (1.0 - A_var) / (1.0 - planet.albedo)
+    flux = f * Sabs * (r_t / planet.rAU) ** -2 * c
 
     return flux, dt
 
@@ -246,6 +254,12 @@ def main(argv=None):
                         help="Solar declination [degrees] (default: 0)")
     parser.add_argument("--distance", type=float, default=None,
                         help="Heliocentric distance [AU] (default: planet.rAU)")
+    parser.add_argument("--slope", type=float, default=0.0,
+                        help="Surface slope [degrees, 0-90] (default: 0 = flat). "
+                             "Direct flux only; no indirect terrain flux.")
+    parser.add_argument("--slope-az", type=float, default=0.0,
+                        help="Slope azimuth [degrees clockwise from N: "
+                             "0=N, 90=E] (default: 0)")
 
     eclipse = parser.add_argument_group("eclipse/shadow options")
     eclipse.add_argument("--eclipse-start", type=float, default=None,
@@ -296,6 +310,7 @@ def main(argv=None):
         planet, lat_rad, nsteps,
         t_start_hr=args.t_start, t_stop_hr=args.t_stop,
         dec_rad=dec_rad, r=args.distance,
+        slope=np.deg2rad(args.slope), slope_az=np.deg2rad(args.slope_az),
     )
 
     # Apply eclipse if specified
@@ -323,6 +338,9 @@ def main(argv=None):
     print(f"  Local time:  {args.t_start:.2f} - {args.t_stop:.2f} planetary hr")
     print(f"  Declination: {args.declination:.2f} deg")
     print(f"  1 local hr = {planet.day/24.0:.1f} s = {planet.day/24.0/3600:.2f} Earth hr")
+    if args.slope > 0:
+        print(f"  Slope:       {args.slope:.1f} deg @ az {args.slope_az:.0f} deg "
+              f"(direct flux only)")
     if args.albedo is not None:
         print(f"  Albedo (A0): {args.albedo:.4f}")
     if eclipse_info:

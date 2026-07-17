@@ -21,6 +21,7 @@
 - **JPL Horizons/SPICE integration** for precise ephemeris-driven illumination
 - **Eclipse modeling** for satellite bodies (e.g., Moon in Earth's shadow)
 - **PSR crater modeling**: bowl-shaped permanently shadowed regions ([Ingersoll & Svitek, 1992](docs/Ingersoll-Svitek_bowl-shaped-craters-frost_Icarus_1992.pdf))
+- **Sloped surfaces**: tilted-surface insolation with self-shadowing ([Braun & Mitchell, 1983](https://doi.org/10.1016/0038-092X(83)90046-4)) and indirect heating from surrounding flat terrain
 - **YAML configuration** system shared between Python and C implementations
 - **Validation suite** against Apollo heat flow data and Diviner radiometer observations
 - **C implementation** for the highest computational performance (same YAML config, all solvers, 24 validation tests)
@@ -144,6 +145,28 @@ model.run()
 ```
 
 For the full derivation and formulas, see the [Boundary Conditions](python/docs/boundary.md) documentation.
+
+## Sloped Surfaces
+
+`heat1d` can model temperatures on an **isolated tilted surface** surrounded by flat terrain, given the slope angle and azimuth (degrees clockwise from north: 0=N, 90=E). Direct insolation follows the [Braun & Mitchell (1983)](https://doi.org/10.1016/0038-092X(83)90046-4) geometry with two independent occlusion tests: the direct beam is zero whenever the sun is behind the tilted surface (self-shadowing) *or* below the local horizon — the tangent plane of the spherical body — so sunrise/sunset timing accounts for occlusion by the body itself, even for steep slopes that would otherwise geometrically "see" the sun at night.
+
+By default, sloped runs also include **ground heating** — the indirect flux from thermal emission and reflected sunlight of the surrounding flat terrain, seen by the slope at view factor $\sin^2(s/2)$. This is computed from an automatic flat-surface companion run at the same latitude, whose equilibrated diurnal cycle supplies a periodic indirect-flux table applied during both equilibration and output. The feature works with the Python and C backends, all solvers, and the JPL Horizons illumination mode (which uses the queried solar azimuth/elevation).
+
+```bash
+# 25° south-facing slope at 30°N, with ground heating (default)
+heat1d --lat 30 --slope 25 --slope-az 180
+
+# Direct insolation only
+heat1d --lat 30 --slope 25 --slope-az 180 --no-ground-heating
+```
+
+```python
+model = Model(planet=planets.Moon, lat=np.deg2rad(30), ndays=1,
+              slope=np.deg2rad(25), slope_az=np.deg2rad(180))
+model.run()
+```
+
+See the [Sloped Surfaces](python/docs/slopes.md) documentation for the geometry, view factors, and approximations.
 
 ## Graphical User Interface
 

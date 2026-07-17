@@ -39,6 +39,11 @@ void config_set_defaults(configT *cfg) {
     cfg->ndays        = NDAYSOUT;      /* 1 */
     cfg->solver       = SOLVER_EXPLICIT;
 
+    /* Sloped surface */
+    cfg->slope          = 0.0;         /* flat */
+    cfg->slope_azimuth  = 0.0;         /* north-facing */
+    cfg->ground_heating = 1;           /* on (active only when slope > 0) */
+
     /* Numerical parameters */
     cfg->fourier_number        = FOM;     /* 0.49 */
     cfg->layers_per_skin_depth = 10;      /* m = 10 */
@@ -114,11 +119,26 @@ void config_to_profile(const configT *cfg, profileT *p) {
         p->nperday_output = cfg->nperday_output;
     }
 
-    /* Slope (flat surface default) */
-    p->slopesin = 0.0;
-    p->slopecos = 1.0;
-    p->az       = 0.0;
-    p->dsquared = 0.0;
+    /* Slope geometry.  User convention: slope [deg from horizontal],
+     * azimuth [deg clockwise from N: 0=N, 90=E, 180=S].  radFlux()
+     * uses the Braun & Mitchell (1983) azimuth convention (0 = due
+     * south, positive toward west), hence az = (az_deg - 180)*pi/180. */
+    {
+        double s = cfg->slope;
+        if ( s < 0.0 )  s = 0.0;
+        if ( s > 90.0 ) s = 90.0;
+        p->slopecos = cos(s * PI180);
+        p->slopesin = sin(s * PI180);
+        p->az       = (fmod(cfg->slope_azimuth, 360.0) - 180.0) * PI180;
+        p->dsquared = 0.0;
+    }
+
+    /* Terrain irradiance table (attached later by the caller when
+     * slope > 0 and ground heating is enabled) */
+    p->terr_Tflat = NULL;
+    p->terr_Fscat = NULL;
+    p->n_terr     = 0;
+    p->terr_dt    = 0.0;
 
     /* External flux (not set here; handled separately) */
     p->flux_input     = NULL;
@@ -148,6 +168,15 @@ static void apply_yaml_value(configT *cfg, yaml_section_t section,
             cfg->latitude = atof(val);
         else if (strcmp(key, "ndays") == 0)
             cfg->ndays = atoi(val);
+        else if (strcmp(key, "slope") == 0)
+            cfg->slope = atof(val);
+        else if (strcmp(key, "slope_azimuth") == 0)
+            cfg->slope_azimuth = atof(val);
+        else if (strcmp(key, "ground_heating") == 0)
+            cfg->ground_heating = !(strcmp(val, "false") == 0 ||
+                                    strcmp(val, "no") == 0 ||
+                                    strcmp(val, "0") == 0 ||
+                                    strcmp(val, "False") == 0);
         else if (strcmp(key, "solver") == 0) {
             int s = config_solver_from_string(val);
             if (s >= 0) cfg->solver = s;
@@ -202,6 +231,10 @@ static void apply_yaml_value(configT *cfg, yaml_section_t section,
             cfg->adaptive_tol = atof(val);
         else if (strcmp(key, "output_interval") == 0)
             cfg->output_interval = atof(val);
+        else if (strcmp(key, "equil_nperday") == 0)
+            cfg->equil_nperday = atoi(val);
+        else if (strcmp(key, "nperday_output") == 0)
+            cfg->nperday_output = atoi(val);
     }
     else if (section == SEC_PHYSICAL) {
         if (strcmp(key, "solar_constant") == 0)
@@ -325,6 +358,9 @@ void config_print(const configT *cfg, FILE *fp) {
     fprintf(fp, "latitude:           %.2f deg\n", cfg->latitude);
     fprintf(fp, "ndays:              %d\n", cfg->ndays);
     fprintf(fp, "solver:             %d\n", cfg->solver);
+    fprintf(fp, "slope:              %.2f deg\n", cfg->slope);
+    fprintf(fp, "slope_azimuth:      %.2f deg\n", cfg->slope_azimuth);
+    fprintf(fp, "ground_heating:     %s\n", cfg->ground_heating ? "true" : "false");
     fprintf(fp, "thermal_inertia:    %.1f\n", cfg->thermal_inertia);
     fprintf(fp, "numerical.F:        %.4f\n", cfg->fourier_number);
     fprintf(fp, "numerical.m:        %d\n", cfg->layers_per_skin_depth);

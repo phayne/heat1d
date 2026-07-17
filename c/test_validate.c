@@ -70,6 +70,14 @@ static void init_profile_defaults( profileT *p ) {
   p->omega_peri = OMEGA;
   p->nyearseq = NYEARSEQ;
   p->ndays_out = NDAYSOUT;
+  /* External flux and terrain table: disabled */
+  p->flux_input = NULL;
+  p->flux_input_len = 0;
+  p->flux_input_dt = 0.0;
+  p->terr_Tflat = NULL;
+  p->terr_Fscat = NULL;
+  p->n_terr = 0;
+  p->terr_dt = 0.0;
 }
 
 /*

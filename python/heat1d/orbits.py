@@ -190,15 +190,66 @@ def orbitParams(model):
     # Angular velocity (kept for reference/diagnostics)
     model.nudot = model.r**-2 * np.sqrt(GM*x)
 
-def cosSolarZenith(lat, dec, h):
+def cosSolarZenith(lat, dec, h, clip=True):
+    """Cosine of the solar zenith angle.
 
+    Parameters
+    ----------
+    lat : float or np.ndarray
+        Latitude [rad].
+    dec : float or np.ndarray
+        Solar declination [rad].
+    h : float or np.ndarray
+        Hour angle [rad] (0 at local noon).
+    clip : bool
+        When True (default), clip to zero when the sun is below the
+        horizon.  When False, return the raw signed cosine (needed by
+        sloped-surface geometry, which must distinguish "sun below the
+        flat horizon" from "sun behind the slope").
+    """
     # Cosine of solar zenith angle
     x = np.sin(lat)*np.sin(dec) + np.cos(lat)*np.cos(dec)*np.cos(h)
+
+    if not clip:
+        return x
 
     # Clipping function = zero when sun below horizon:
     y = 0.5*(x + np.abs(x))
 
     return y
+
+
+def solarAzimuth(lat, dec, h):
+    """Solar azimuth angle, clockwise from north.
+
+    Computed from the sun unit vector in the local ENU frame:
+
+        E = -cos(dec)*sin(h)
+        N =  cos(lat)*sin(dec) - sin(lat)*cos(dec)*cos(h)
+        A = atan2(E, N)  in [0, 2*pi)
+
+    The atan2 form handles all quadrants and the polar/zenith
+    degeneracies without special cases (at the zenith it returns 0,
+    which is harmless because the azimuth term in the slope geometry
+    is multiplied by sin(z) = 0).
+
+    Parameters
+    ----------
+    lat : float or np.ndarray
+        Latitude [rad].
+    dec : float or np.ndarray
+        Solar declination [rad].
+    h : float or np.ndarray
+        Hour angle [rad] (0 at local noon, positive in the afternoon).
+
+    Returns
+    -------
+    A : float or np.ndarray
+        Solar azimuth [rad], in [0, 2*pi); 0 = N, pi/2 = E.
+    """
+    E = -np.cos(dec) * np.sin(h)
+    N = np.cos(lat) * np.sin(dec) - np.sin(lat) * np.cos(dec) * np.cos(h)
+    return np.arctan2(E, N) % TWOPI
 
 def hourAngle(t, P):
 

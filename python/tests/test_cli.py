@@ -118,3 +118,72 @@ class TestCLIYamlConfig:
         """CLI handles missing config file gracefully."""
         result = runner.invoke(main, ["nonexistent.yaml"])
         assert result.exit_code != 0
+
+
+class TestCLISlope:
+
+    def test_slope_run(self, runner):
+        """Sloped run succeeds and reports slope in the summary."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = runner.invoke(main, [
+                "--slope", "30", "--slope-az", "90",
+                "--no-plot", "--output-dir", tmpdir,
+            ])
+            assert result.exit_code == 0
+            assert "Slope:" in result.output
+            assert "ground heating on" in result.output
+            assert os.path.exists(os.path.join(tmpdir, "heat1d_temperature.csv"))
+
+    def test_no_ground_heating_flag(self, runner):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = runner.invoke(main, [
+                "--slope", "20", "--no-ground-heating",
+                "--no-plot", "--output-dir", tmpdir,
+            ])
+            assert result.exit_code == 0
+            assert "ground heating off" in result.output
+
+    def test_slope_range_validation(self, runner):
+        result = runner.invoke(main, ["--slope", "95", "--no-plot"])
+        assert result.exit_code != 0
+        result = runner.invoke(main, ["--slope", "-5", "--no-plot"])
+        assert result.exit_code != 0
+
+    def test_slope_psr_mutually_exclusive(self, runner):
+        result = runner.invoke(main, [
+            "--slope", "20", "--psr-d-D", "0.2", "--no-plot",
+        ])
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output
+
+    def test_slope_flux_file_rejected(self, runner):
+        """--flux-file + --slope is refused (file assumed slope-projected)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            flux_path = os.path.join(tmpdir, "flux.txt")
+            from heat1d.flux import write_flux_file
+            import numpy as np
+            write_flux_file(flux_path, np.ones(10), 100.0)
+            result = runner.invoke(main, [
+                "--slope", "20", "--flux-file", flux_path, "--no-plot",
+            ])
+            assert result.exit_code != 0
+            assert "slope-projected" in result.output
+
+    def test_slope_yaml_keys(self, runner):
+        """YAML slope keys are honored (and CLI summary reflects them)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yaml_path = os.path.join(tmpdir, "slope.yaml")
+            with open(yaml_path, "w") as f:
+                f.write(
+                    "latitude: 0.0\n"
+                    "ndays: 1\n"
+                    "slope: 25.0\n"
+                    "slope_azimuth: 180.0\n"
+                    "ground_heating: false\n"
+                )
+            result = runner.invoke(main, [
+                yaml_path, "--no-plot", "--output-dir", tmpdir,
+            ])
+            assert result.exit_code == 0
+            assert "25.0 deg" in result.output
+            assert "ground heating off" in result.output

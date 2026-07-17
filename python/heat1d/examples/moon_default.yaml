@@ -18,6 +18,11 @@ planet:
 latitude: 0.0             # degrees
 ndays: 1                  # number of output days
 
+# Sloped surface (optional; active when slope > 0)
+# slope: 30.0             # surface slope [degrees, 0-90]
+# slope_azimuth: 0.0      # aspect [degrees clockwise from N: 0=N, 90=E, 180=S]
+# ground_heating: true    # indirect thermal + reflected flux from flat terrain
+
 solver: "implicit"        # "explicit", "crank-nicolson", "implicit", or "fourier-matrix"
 
 numerical:

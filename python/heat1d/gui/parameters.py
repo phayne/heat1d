@@ -218,6 +218,48 @@ class ParameterPanel(QWidget):
         # Update PSR viability when lat or d/D changes
         self.lat_spin.valueChanged.connect(self._update_psr_viability)
 
+        # ---- Sloped surface sub-panel ----
+        slope_group = QGroupBox("Sloped Surface")
+        slope_group.setCheckable(True)
+        slope_group.setChecked(False)
+        slope_form = QFormLayout()
+
+        self.slope_spin = QDoubleSpinBox()
+        self.slope_spin.setRange(0.0, 90.0)
+        self.slope_spin.setDecimals(1)
+        self.slope_spin.setSingleStep(1.0)
+        self.slope_spin.setSuffix(" deg")
+        self.slope_spin.setValue(30.0)
+        slope_form.addRow("Slope:", self.slope_spin)
+
+        self.slope_az_spin = QDoubleSpinBox()
+        self.slope_az_spin.setRange(0.0, 359.9)
+        self.slope_az_spin.setDecimals(1)
+        self.slope_az_spin.setSingleStep(5.0)
+        self.slope_az_spin.setSuffix(" deg")
+        self.slope_az_spin.setValue(0.0)
+        slope_form.addRow("Azimuth:", self.slope_az_spin)
+
+        az_hint = QLabel("0 = N, 90 = E, 180 = S, 270 = W")
+        az_hint.setStyleSheet("font-size: 11px; color: gray;")
+        slope_form.addRow("", az_hint)
+
+        self.ground_heating_check = QCheckBox(
+            "Terrain heating (thermal + reflected from flat ground)")
+        self.ground_heating_check.setChecked(True)
+        slope_form.addRow("", self.ground_heating_check)
+
+        slope_group.setLayout(slope_form)
+        self.slope_group = slope_group
+        layout.addWidget(slope_group)
+
+        # Slope and PSR crater geometries are mutually exclusive:
+        # checking one unchecks the other.
+        self.slope_group.toggled.connect(
+            lambda on: on and self.psr_group.setChecked(False))
+        self.psr_group.toggled.connect(
+            lambda on: on and self.slope_group.setChecked(False))
+
         # Initialize body ID from default planet
         self._on_planet_changed(self.planet_combo.currentText())
 
@@ -307,6 +349,27 @@ class ParameterPanel(QWidget):
         # Initialize with Moon defaults (chi is not a planet attr, set manually)
         self._load_planet_thermo(planets_pkg.Moon)
         self._thermo_spins["chi"].setValue(2.7)
+
+        # ---- Constant Thermal Inertia sub-section ----
+        self._ti_check = QCheckBox("Use constant thermal inertia")
+        self._ti_check.setChecked(False)
+        self._ti_check.toggled.connect(self._on_ti_toggled)
+        layout.addWidget(self._ti_check)
+
+        ti_form = QFormLayout()
+        self._ti_spin = QDoubleSpinBox()
+        self._ti_spin.setRange(5.0, 500.0)
+        self._ti_spin.setDecimals(1)
+        self._ti_spin.setSingleStep(5.0)
+        self._ti_spin.setValue(55.0)
+        self._ti_spin.setSuffix(" J m\u207b\u00b2 K\u207b\u00b9 s\u207b\u00bd")
+        self._ti_spin.setEnabled(False)
+        ti_form.addRow("Thermal inertia:", self._ti_spin)
+
+        self._ti_no_tdep = QCheckBox("Temperature-independent (constant k, cp)")
+        self._ti_no_tdep.setEnabled(False)
+        ti_form.addRow("", self._ti_no_tdep)
+        layout.addLayout(ti_form)
 
         # ---- Sweep sub-section ----
         sweep_group = QGroupBox("Parameter Sweep")
@@ -447,6 +510,21 @@ class ParameterPanel(QWidget):
             if hasattr(self, '_custom_layers'):
                 self._custom_layers = []
                 self._profile_status.setText("")
+
+    def _on_ti_toggled(self, enabled):
+        self._ti_spin.setEnabled(enabled)
+        self._ti_no_tdep.setEnabled(enabled)
+        if enabled:
+            # Uncheck "Use planet defaults" — TI overrides individual props
+            self.thermo_auto.setChecked(False)
+            # Disable ks, kd, rhos, rhod, H (computed from TI)
+            for key in ("ks", "kd", "rhos", "rhod", "H"):
+                self._thermo_spins[key].setEnabled(False)
+        else:
+            # Re-enable based on thermo_auto state
+            if not self.thermo_auto.isChecked():
+                for key in ("ks", "kd", "rhos", "rhod", "H"):
+                    self._thermo_spins[key].setEnabled(True)
 
     def _on_numerical_override_toggled(self, checked):
         self.m_spin.setEnabled(checked)
@@ -673,6 +751,11 @@ class ParameterPanel(QWidget):
         if not thermo_auto:
             for key, spin in self._thermo_spins.items():
                 thermo[key] = spin.value()
+        # Constant TI override
+        if self._ti_check.isChecked():
+            thermo["constant_ti"] = True
+            thermo["ti_value"] = self._ti_spin.value()
+            thermo["ti_no_tdep"] = self._ti_no_tdep.isChecked()
 
         # Convert equilibration value + unit to integer orbits
         equil_unit = self.equil_unit_combo.currentText()
@@ -740,6 +823,16 @@ class ParameterPanel(QWidget):
             params["psr_d_D"] = self.psr_d_D_spin.value()
         else:
             params["psr_d_D"] = None
+
+        # Sloped surface
+        if self.slope_group.isChecked():
+            params["slope_deg"] = self.slope_spin.value()
+            params["slope_az_deg"] = self.slope_az_spin.value()
+            params["ground_heating"] = self.ground_heating_check.isChecked()
+        else:
+            params["slope_deg"] = None
+            params["slope_az_deg"] = None
+            params["ground_heating"] = True
 
         # Sweep configuration
         if self.sweep_group.isChecked():
@@ -832,6 +925,16 @@ class ParameterPanel(QWidget):
             self._custom_layers = []
             self._profile_status.setText("")
 
+        # Sloped surface
+        if float(yaml_data.get("slope", 0.0)) > 0:
+            self.slope_group.setChecked(True)
+            self.slope_spin.setValue(float(yaml_data["slope"]))
+            self.slope_az_spin.setValue(float(yaml_data.get("slope_azimuth", 0.0)))
+            self.ground_heating_check.setChecked(
+                bool(yaml_data.get("ground_heating", True)))
+        else:
+            self.slope_group.setChecked(False)
+
         # Horizons section
         horizons_cfg = yaml_data.get("horizons", {})
         if horizons_cfg.get("enabled", False):
@@ -893,6 +996,12 @@ class ParameterPanel(QWidget):
                 yaml_dict["horizons"]["eclipses"]["parent_body_id"] = params["parent_body_id"]
             if params.get("body_center"):
                 yaml_dict["horizons"]["body_center"] = True
+
+        # Sloped surface
+        if params.get("slope_deg") is not None:
+            yaml_dict["slope"] = params["slope_deg"]
+            yaml_dict["slope_azimuth"] = params["slope_az_deg"]
+            yaml_dict["ground_heating"] = params["ground_heating"]
 
         # Custom depth profile layers
         if self._custom_layers:

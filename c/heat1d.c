@@ -51,7 +51,13 @@ static void print_usage(void) {
   printf("  --H <value>       Override H-parameter [m]\n");
   printf("  --albedo <value>  Override albedo\n");
   printf("  --flux <file>     External flux file\n");
+  printf("  --slope <deg>     Surface slope [degrees, 0-90]\n");
+  printf("  --slope-az <deg>  Slope azimuth [deg clockwise from N: 0=N, 90=E]\n");
+  printf("  --no-ground-heating  Disable indirect terrain flux for slopes\n");
   printf("  --verbose         Print configuration to stderr\n");
+  printf("\n");
+  printf("  (Sloped surfaces require YAML mode; not available with\n");
+  printf("   legacy positional arguments.)\n");
   printf("\n");
   printf("Legacy positional mode:\n");
   printf("  <lat>             Latitude in degrees\n");
@@ -116,6 +122,12 @@ int main( int argc, char *argv[] ) {
         cfg.albedo = atof(argv[++i]);
       } else if (strcmp(argv[i], "--flux") == 0 && i+1 < argc) {
         strncpy(cfg.flux_file, argv[++i], sizeof(cfg.flux_file) - 1);
+      } else if (strcmp(argv[i], "--slope") == 0 && i+1 < argc) {
+        cfg.slope = atof(argv[++i]);
+      } else if (strcmp(argv[i], "--slope-az") == 0 && i+1 < argc) {
+        cfg.slope_azimuth = atof(argv[++i]);
+      } else if (strcmp(argv[i], "--no-ground-heating") == 0) {
+        cfg.ground_heating = 0;
       } else if (strcmp(argv[i], "--verbose") == 0) {
         verbose = 1;
       } else {
@@ -184,6 +196,61 @@ int main( int argc, char *argv[] ) {
             flux_nsteps, flux_dt, flux_nsteps * flux_dt);
   }
 
+  /* ---------------------------------------------------
+   * Sloped surface: run a flat companion model first to
+   * build the indirect terrain-flux table (ground heating).
+   * Must run BEFORE the main tiProfile() call so the main
+   * run's profile_z_dz_rho_k.txt is the one left on disk.
+   * --------------------------------------------------- */
+  double *terr_T = NULL, *terr_F = NULL;
+  if ( cfg.slope > 0.0 && cfg.ground_heating ) {
+    if ( flux_data )
+      fprintf(stderr, "Warning: external flux + slope: the flux file is "
+                      "assumed to be slope-projected direct flux; the "
+                      "terrain table is added on top\n");
+
+    configT cfg_flat = cfg;
+    cfg_flat.slope = 0.0;
+    cfg_flat.ground_heating = 0;
+    cfg_flat.flux_file[0] = '\0';
+
+    profileT *pf = (profileT *) malloc( sizeof(profileT) );
+    if ( !pf ) {
+      fprintf(stderr, "Error: failed to allocate companion profileT\n");
+      free(flux_data);
+      free(p);
+      return -1;
+    }
+    config_to_profile(&cfg_flat, pf);
+
+    int n_terr = (cfg.nperday_output > 480) ? cfg.nperday_output : 480;
+    terr_T = (double *) malloc( n_terr * sizeof(double) );
+    terr_F = (double *) malloc( n_terr * sizeof(double) );
+
+    if ( !terr_T || !terr_F ||
+         !tiProfile(pf, cfg_flat.H, cfg_flat.thermal_inertia, &cfg_flat) ||
+         !collectFlatDiurnalCycle(pf, n_terr, terr_T, terr_F) ) {
+      fprintf(stderr, "Error: flat companion run failed\n");
+      free(terr_T); free(terr_F);
+      freeProfile(pf); free(pf);
+      free(flux_data);
+      free(p);
+      return -1;
+    }
+
+    p->terr_Tflat = terr_T;
+    p->terr_Fscat = terr_F;
+    p->n_terr     = n_terr;
+    p->terr_dt    = p->rotperiod / n_terr;
+
+    freeProfile(pf);
+    free(pf);
+
+    if (verbose)
+      fprintf(stderr, "Flat companion run complete: %d-sample terrain table\n",
+              n_terr);
+  }
+
   /* Compute end time */
   endtime = (p->nyearseq + NYEARSOUT) * getSecondsPerYear(p)
           + p->rotperiod * (p->ndays_out + ENDHOUR/24.0);
@@ -191,6 +258,8 @@ int main( int argc, char *argv[] ) {
   /* Generate model grid and thermophysical profile */
   if ( !tiProfile(p, cfg.H, cfg.thermal_inertia, &cfg) ) {
     fprintf(stderr, "Error initializing profile\n");
+    free(terr_T);
+    free(terr_F);
     free(flux_data);
     free(p);
     return -1;
@@ -201,6 +270,8 @@ int main( int argc, char *argv[] ) {
 
   /* Free memory */
   freeProfile(p);
+  free(terr_T);
+  free(terr_F);
   free(flux_data);
   free(p);
 

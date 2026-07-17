@@ -32,6 +32,7 @@ This documentation follows the structure of the Appendix from:
    grid
    initialization
    equilibration
+   slopes
 
 .. toctree::
    :maxdepth: 2
