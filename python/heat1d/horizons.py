@@ -237,6 +237,12 @@ def _detect_west_positive(response_text):
     Scans the header (before ``$$SOE``) for the coordinate label
     ``{W-lon`` which Horizons emits for west-positive bodies.
 
+    A rejected query carries no header at all -- Horizons instead
+    replies with ``Input east-longitude as negative for IAU
+    west-positive body #502``.  That message is also treated as a
+    positive detection so the caller can re-query with the sign
+    flipped.
+
     Returns
     -------
     bool
@@ -244,7 +250,9 @@ def _detect_west_positive(response_text):
     """
     # Only look at lines before $$SOE (the header)
     header = response_text.split("$$SOE")[0] if "$$SOE" in response_text else response_text
-    return "W-lon" in header or "w-lon" in header
+    if "W-lon" in header or "w-lon" in header:
+        return True
+    return "west-positive" in header.lower()
 
 
 def _east_to_horizons_lon(lon_deg, body_id):
@@ -381,6 +389,23 @@ def _horizons_request(body_id, lon_deg, lat_deg, start_time, stop_time,
     return result_text
 
 
+def _horizons_float(token):
+    """Convert a Horizons table cell to float, mapping placeholders to NaN.
+
+    Horizons emits ``n.a.`` for quantities it cannot compute for a given
+    observer/target pair.  The most common case is Quantity 25
+    (T-O-I angle and interfering-body illumination), which is only
+    defined when Horizons has a default interfering body for the
+    observer site -- in practice only for Earth- and Moon-based
+    observers.  Every other satellite surface observer (Europa, Titan,
+    ...) returns ``n.a.`` in those columns.
+    """
+    token = token.strip()
+    if not token or token.lower().rstrip(".") in ("n.a", "n/a", "na"):
+        return float("nan")
+    return float(token)
+
+
 def _parse_horizons_response(result_text, quantities="4,20"):
     """Parse the text inside a Horizons JSON ``result`` field.
 
@@ -427,6 +452,10 @@ def _parse_horizons_response(result_text, quantities="4,20"):
         "13": {
             "min_cols": 4,
             "ang_diam": 3,
+        },
+        "4,13": {
+            "min_cols": 6,
+            "azimuth": 3, "elevation": 4, "ang_diam": 5,
         },
         "31,20": {
             "min_cols": 6,
@@ -476,7 +505,7 @@ def _parse_horizons_response(result_text, quantities="4,20"):
         for key, idx in col_map.items():
             if key == "min_cols":
                 continue
-            columns[key].append(float(parts[idx]))
+            columns[key].append(_horizons_float(parts[idx]))
 
     if not times_utc:
         raise HorizonsError("No data rows found between $$SOE and $$EOE")
@@ -921,8 +950,19 @@ def query_parent_body(parent_id, satellite_id, lon_deg, lat_deg,
     Returns
     -------
     dict
-        Keys: ``ang_diam_arcsec`` (ndarray), ``times_utc`` (list),
-        ``n_samples`` (int), ``dt_seconds`` (float).
+        Keys: ``ang_diam_arcsec`` (ndarray), ``azimuth_deg`` (ndarray),
+        ``solar_elevation_deg`` (ndarray, actually the *parent body*
+        elevation), ``times_utc`` (list), ``n_samples`` (int),
+        ``dt_seconds`` (float).
+
+    Notes
+    -----
+    Azimuth/elevation of the parent are requested alongside the angular
+    diameter so that the Sun-parent angular separation can be computed
+    directly (see :func:`apply_horizons_eclipses`).  Horizons' own
+    T-O-I angle (Quantity 25) is only available for Earth- and
+    Moon-based observers, so it cannot be relied on for Europa, Titan,
+    or any other satellite.
     """
     return query_horizons(
         body_id=satellite_id,
@@ -932,7 +972,7 @@ def query_parent_body(parent_id, satellite_id, lon_deg, lat_deg,
         stop_time=stop_time,
         step_size=step_size,
         timeout=timeout,
-        quantities="13",
+        quantities="4,13",
         command=parent_id,
     )
 
@@ -952,24 +992,45 @@ def apply_horizons_eclipses(flux, sun_result, parent_result):
 
     Returns
     -------
-    dict
+    dict or None
         Eclipse metadata: ``n_eclipses``, ``total_eclipse_samples``,
-        ``max_fraction``, ``eclipse_fraction`` (the full array).
+        ``max_fraction``, ``eclipse_fraction`` (the full array), and
+        ``source`` (``"az_el"`` or ``"toi"``).  Returns ``None`` if
+        neither geometry source is available, in which case *flux* is
+        left unmodified.
+
+    Notes
+    -----
+    The Sun-parent angular separation is computed from the apparent
+    azimuth/elevation of the two bodies when both are available.  This
+    works for every satellite and is more precise than Horizons'
+    T-O-I angle (Quantity 25), which is reported to only 0.1 deg and
+    is returned as ``n.a.`` for all observers except those on Earth and
+    the Moon.  The T-O-I column is used as a fallback when azimuth /
+    elevation of the parent were not requested.
     """
     from .eclipse import compute_eclipse_fraction
 
-    toi_deg = sun_result["toi_deg"]
-    sun_diam = sun_result["sun_ang_diam_arcsec"]
-    ib_diam = parent_result["ang_diam_arcsec"]
+    sun_diam = np.asarray(sun_result["sun_ang_diam_arcsec"], dtype=float)
+    ib_diam = np.asarray(parent_result["ang_diam_arcsec"], dtype=float)
+
+    sep_deg, source = _sun_parent_separation(sun_result, parent_result)
+    if sep_deg is None:
+        return None
 
     # Align array lengths (truncate to shorter if Horizons returned
     # different sample counts due to rounding)
-    n = min(len(flux), len(toi_deg), len(ib_diam))
-    toi_deg = toi_deg[:n]
+    n = min(len(flux), len(sep_deg), len(ib_diam), len(sun_diam))
+    if n == 0:
+        return None
+    sep_deg = sep_deg[:n]
     sun_diam = sun_diam[:n]
     ib_diam = ib_diam[:n]
 
-    frac = compute_eclipse_fraction(toi_deg, sun_diam, ib_diam)
+    frac = compute_eclipse_fraction(sep_deg, sun_diam, ib_diam)
+    # Samples where Horizons could not supply the geometry contribute
+    # no eclipse rather than a NaN that would poison the flux array.
+    frac = np.nan_to_num(frac, nan=0.0)
 
     # Apply reduction
     flux[:n] *= (1.0 - frac)
@@ -990,7 +1051,43 @@ def apply_horizons_eclipses(flux, sun_result, parent_result):
         "total_eclipse_samples": int(np.sum(eclipsed)),
         "max_fraction": float(frac.max()) if len(frac) > 0 else 0.0,
         "eclipse_fraction": frac,
+        "source": source,
     }
+
+
+def _sun_parent_separation(sun_result, parent_result):
+    """Angular separation between the Sun and the parent body [degrees].
+
+    Returns
+    -------
+    (ndarray or None, str or None)
+        The separation array and the name of the geometry source used
+        (``"az_el"`` or ``"toi"``), or ``(None, None)`` if neither is
+        available.
+    """
+    az_s = sun_result.get("azimuth_deg")
+    el_s = sun_result.get("solar_elevation_deg")
+    az_p = parent_result.get("azimuth_deg")
+    el_p = parent_result.get("solar_elevation_deg")
+
+    if az_s is not None and el_s is not None \
+            and az_p is not None and el_p is not None:
+        n = min(len(az_s), len(el_s), len(az_p), len(el_p))
+        az_s = np.deg2rad(np.asarray(az_s[:n], dtype=float))
+        el_s = np.deg2rad(np.asarray(el_s[:n], dtype=float))
+        az_p = np.deg2rad(np.asarray(az_p[:n], dtype=float))
+        el_p = np.deg2rad(np.asarray(el_p[:n], dtype=float))
+        cos_sep = (np.sin(el_s) * np.sin(el_p)
+                   + np.cos(el_s) * np.cos(el_p) * np.cos(az_s - az_p))
+        return np.degrees(np.arccos(np.clip(cos_sep, -1.0, 1.0))), "az_el"
+
+    toi = sun_result.get("toi_deg")
+    if toi is not None:
+        toi = np.asarray(toi, dtype=float)
+        if not np.all(np.isnan(toi)):
+            return np.abs(toi), "toi"
+
+    return None, None
 
 
 # ---------------------------------------------------------------------------
@@ -1224,17 +1321,31 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
     # Apply eclipse reductions if applicable
     eclipse_info = None
     if detect_eclipses:
-        parent_result = query_parent_body(
-            parent_id=pid,
-            satellite_id=bid,
-            lon_deg=lon_deg,
-            lat_deg=lat_deg,
-            start_time=start_time,
-            stop_time=stop_time,
-            step_size=step_str,
-            timeout=timeout,
-        )
-        eclipse_info = apply_horizons_eclipses(flux, result, parent_result)
+        try:
+            parent_result = query_parent_body(
+                parent_id=pid,
+                satellite_id=bid,
+                lon_deg=lon_deg,
+                lat_deg=lat_deg,
+                start_time=start_time,
+                stop_time=stop_time,
+                step_size=step_str,
+                timeout=timeout,
+            )
+            eclipse_info = apply_horizons_eclipses(flux, result, parent_result)
+        except HorizonsError as exc:
+            warnings.warn(
+                f"Eclipse geometry unavailable for body '{bid}' "
+                f"(parent '{pid}'): {exc}. Continuing without eclipses.",
+                stacklevel=2,
+            )
+        if eclipse_info is None:
+            warnings.warn(
+                f"Horizons did not supply usable Sun/parent geometry for "
+                f"body '{bid}'; eclipses by '{pid}' are NOT included in "
+                f"the flux.",
+                stacklevel=2,
+            )
 
     metadata = {
         "body_id": bid,

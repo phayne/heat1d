@@ -944,3 +944,134 @@ class TestAutoFallback:
                 start_time="2024-06-15 00:00",
                 stop_time="2024-06-16 00:00",
             )
+
+
+# ---------------------------------------------------------------------------
+# Regression tests: non-Moon satellite observers
+# ---------------------------------------------------------------------------
+
+# Horizons supplies Quantity 25 (T-O-I / IB illumination) only for Earth- and
+# Moon-based observers.  Every other satellite surface site -- Europa, Titan,
+# ... -- gets 'n.a.' in those columns.
+SAMPLE_RESPONSE_EUROPA = """\
+*******************************************************************************
+$$SOE
+ 2026-Jan-01 00:00, , , 276.572980,   -80.351874,  368.4031,  5.20749054422039,   n.a.,     n.a.,
+ 2026-Jan-01 01:00, , , 281.602064,   -84.526977,  368.4058,  5.20745229674799,   n.a.,     n.a.,
+ 2026-Jan-01 02:00, , , 314.010012,   -88.418233,  368.4068,  5.20743787298163,   n.a.,     n.a.,
+$$EOE
+*******************************************************************************
+"""
+
+
+class TestNonMoonSatelliteParsing:
+    """Horizons returns 'n.a.' for Quantity 25 away from Earth/Moon."""
+
+    def test_na_placeholders_parse_as_nan(self):
+        """'n.a.' must become NaN, not raise ValueError."""
+        result = _parse_horizons_response(SAMPLE_RESPONSE_EUROPA,
+                                          quantities="4,13,20,25")
+        assert result["n_samples"] == 3
+        assert np.all(np.isnan(result["toi_deg"]))
+        assert np.all(np.isnan(result["ib_illu_pct"]))
+
+    def test_usable_columns_still_parsed(self):
+        """Azimuth/elevation/range are unaffected by the 'n.a.' columns."""
+        result = _parse_horizons_response(SAMPLE_RESPONSE_EUROPA,
+                                          quantities="4,13,20,25")
+        np.testing.assert_allclose(result["solar_elevation_deg"][0], -80.351874)
+        np.testing.assert_allclose(result["observer_range_au"][0],
+                                   5.20749054422039)
+        np.testing.assert_allclose(result["sun_ang_diam_arcsec"][0], 368.4031)
+
+    def test_parent_body_layout_with_az_el(self):
+        """QUANTITIES='4,13' (parent body az/el + diameter) parses."""
+        text = (
+            "*******\n$$SOE\n"
+            " 2026-Jan-01 00:00, , , 112.121529, 85.884594, 7218.767,\n"
+            "$$EOE\n*******\n"
+        )
+        result = _parse_horizons_response(text, quantities="4,13")
+        np.testing.assert_allclose(result["azimuth_deg"][0], 112.121529)
+        np.testing.assert_allclose(result["solar_elevation_deg"][0], 85.884594)
+        np.testing.assert_allclose(result["ang_diam_arcsec"][0], 7218.767)
+
+
+class TestEclipseSeparationSource:
+    """Eclipse geometry falls back from T-O-I to az/el separation."""
+
+    def test_az_el_preferred_over_toi(self):
+        """When az/el are present they drive the separation."""
+        from heat1d.horizons import apply_horizons_eclipses
+
+        # Sun and parent at the same az/el → separation 0 → total eclipse,
+        # even though the (stale) T-O-I column says 45° away.
+        flux = np.array([100.0, 100.0])
+        sun_result = {
+            "azimuth_deg": np.array([90.0, 90.0]),
+            "solar_elevation_deg": np.array([45.0, 45.0]),
+            "toi_deg": np.array([45.0, 45.0]),
+            "sun_ang_diam_arcsec": np.full(2, 368.4),
+        }
+        parent_result = {
+            "azimuth_deg": np.array([90.0, 90.0]),
+            "solar_elevation_deg": np.array([45.0, 45.0]),
+            "ang_diam_arcsec": np.full(2, 7218.8),
+        }
+        info = apply_horizons_eclipses(flux, sun_result, parent_result)
+        assert info["source"] == "az_el"
+        assert flux[0] == 0.0
+
+    def test_all_nan_toi_without_az_el_is_skipped(self):
+        """No usable geometry → flux untouched and None returned."""
+        from heat1d.horizons import apply_horizons_eclipses
+
+        flux = np.array([100.0, 100.0])
+        sun_result = {
+            "toi_deg": np.array([np.nan, np.nan]),
+            "sun_ang_diam_arcsec": np.full(2, 368.4),
+        }
+        parent_result = {"ang_diam_arcsec": np.full(2, 7218.8)}
+        info = apply_horizons_eclipses(flux, sun_result, parent_result)
+        assert info is None
+        np.testing.assert_array_equal(flux, [100.0, 100.0])
+
+    def test_europa_separation_detects_jupiter_eclipse(self):
+        """Jupiter passing in front of the Sun as seen from Europa."""
+        from heat1d.horizons import apply_horizons_eclipses
+
+        flux = np.array([100.0, 100.0, 100.0])
+        # Parent fixed; Sun sweeps from far away to coincident.
+        sun_result = {
+            "azimuth_deg": np.array([90.0, 90.0, 90.0]),
+            "solar_elevation_deg": np.array([45.0, 20.0, 10.0]),
+            "toi_deg": np.array([np.nan, np.nan, np.nan]),
+            "sun_ang_diam_arcsec": np.full(3, 368.4),
+        }
+        parent_result = {
+            "azimuth_deg": np.array([90.0, 90.0, 90.0]),
+            "solar_elevation_deg": np.array([10.0, 10.0, 10.0]),
+            "ang_diam_arcsec": np.full(3, 7218.8),
+        }
+        info = apply_horizons_eclipses(flux, sun_result, parent_result)
+        assert info["source"] == "az_el"
+        assert flux[0] == 100.0        # 35° away: no eclipse
+        assert flux[2] == 0.0          # coincident: total eclipse
+        assert info["n_eclipses"] == 1
+
+
+class TestWestPositiveErrorDetection:
+    """A rejected query still reveals the longitude convention."""
+
+    def test_error_message_detected_as_west_positive(self):
+        """Europa's rejection message has no header, only the error text."""
+        from heat1d.horizons import _detect_west_positive
+
+        msg = ("Input east-longitude as negative for IAU "
+               "west-positive body #502")
+        assert _detect_west_positive(msg) is True
+
+    def test_normal_east_positive_response_not_flagged(self):
+        from heat1d.horizons import _detect_west_positive
+
+        assert _detect_west_positive(SAMPLE_RESPONSE) is False

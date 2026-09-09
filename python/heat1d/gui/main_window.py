@@ -152,6 +152,9 @@ class MainWindow(QMainWindow):
         self.status_label.setText(msg)
 
     def _on_finished(self, record):
+        if record is None:
+            # Defensive: a failed run reports through ``error`` instead.
+            return
         self.run_manager.add_run(record)
 
         if self._is_sweep:

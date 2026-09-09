@@ -56,7 +56,10 @@ class SimulationWorker(QThread):
             self._do_sweep(sweep)
         else:
             record = self._run_single(self.params)
-            self.finished.emit(record)
+            # ``_run_single`` returns None after emitting ``error``; do not
+            # forward a null record to the run manager.
+            if record is not None:
+                self.finished.emit(record)
 
     def _do_sweep(self, sweep):
         key = sweep["key"]
@@ -76,6 +79,10 @@ class SimulationWorker(QThread):
             p["sweep"] = None  # prevent recursion
 
             record = self._run_single(p, sweep_info=(key, val))
+            if record is None:
+                # A sweep step failed and already reported the error;
+                # abort the rest of the sweep.
+                break
             self.finished.emit(record)
 
         self.sweep_done.emit()
