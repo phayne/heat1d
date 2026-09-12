@@ -451,14 +451,13 @@ class PlotPanel(QWidget):
             ax = fig.add_subplot(111)
             if diff:
                 ref_flux = records[0].flux_series
-                ref_dt = records[0].flux_dt
                 if ref_flux is not None:
-                    ref_t = np.arange(len(ref_flux)) * ref_dt / 3600.0
+                    ref_t, _ = self._flux_local_time(records[0])
                     for i, rec in enumerate(records[1:], 1):
                         color = _COLORS[(i - 1) % len(_COLORS)]
                         ls = _LINE_STYLES[(i - 1) % len(_LINE_STYLES)]
                         if rec.flux_series is not None:
-                            oth_t = np.arange(len(rec.flux_series)) * rec.flux_dt / 3600.0
+                            oth_t, _ = self._flux_local_time(rec)
                             oth_interp = np.interp(ref_t, oth_t, rec.flux_series)
                             ax.plot(ref_t, oth_interp - ref_flux, color=color,
                                     ls=ls, lw=0.8,
@@ -474,7 +473,7 @@ class PlotPanel(QWidget):
                                          ls=ls)
                 ax.set_ylabel("Absorbed Flux [W/m$^2$]")
                 ax.set_title("Flux Comparison")
-            ax.set_xlabel("Time [hours]")
+            ax.set_xlabel("Local Time (hr)")
             ax.legend()
 
         elif plot_type == "Combined":
@@ -513,6 +512,24 @@ class PlotPanel(QWidget):
             ax2.legend()
 
     # ---- Drawing helpers ----
+
+    @staticmethod
+    def _flux_local_time(record):
+        """Local-time axis [planetary hr past noon] for a flux series.
+
+        Matches the ``model.lt`` axis used by every temperature plot, so
+        a flux curve and the temperature it drives line up.  Falls back
+        to elapsed Earth hours if the model's time base is unavailable.
+        """
+        if record.flux_series is None:
+            return None, "Local Time (hr)"
+        n = len(record.flux_series)
+        day = getattr(getattr(record.model, "planet", None), "day", None)
+        if day and record.flux_dt:
+            lt0 = getattr(record.model, "lt0", 0.0)
+            return (lt0 + np.arange(n) * record.flux_dt / day * 24.0,
+                    "Local Time (hr)")
+        return np.arange(n) * (record.flux_dt or 0.0) / 3600.0, "Time [hours]"
 
     def _draw_diurnal(self, ax, model, label=""):
         """Draw diurnal curves at multiple depths (single-run)."""
@@ -556,7 +573,7 @@ class PlotPanel(QWidget):
     def _draw_flux(self, ax, record):
         """Draw flux time series for a single run."""
         if record.flux_series is not None:
-            t_hr = np.arange(len(record.flux_series)) * record.flux_dt / 3600.0
+            t_hr, xlabel = self._flux_local_time(record)
             ax.plot(t_hr, record.flux_series, "k-", lw=0.8)
             ax.fill_between(t_hr, record.flux_series, alpha=0.3, color="gold")
 
@@ -572,15 +589,12 @@ class PlotPanel(QWidget):
                                     alpha=0.15, color="navy", label="Eclipse")
                     ax.legend()
         else:
-            # Reconstruct flux from model for non-SPICE runs
-            model = record.model
-            t_hr = model.lt
-            # Approximate: use cos(zenith) * S for equator
+            xlabel = "Local Time (hr)"
             ax.text(0.5, 0.5, "Flux data only available\nfor SPICE runs",
                     transform=ax.transAxes, ha="center", va="center",
                     fontsize=12, color="gray")
 
-        ax.set_xlabel("Time [hours]")
+        ax.set_xlabel(xlabel)
         ax.set_ylabel("Absorbed Flux [W/m$^2$]")
 
     def _draw_heatmap(self, ax, lt, z, T, diff=False, fig=None):
@@ -620,7 +634,7 @@ class PlotPanel(QWidget):
     def _draw_flux_line(self, ax, record, color="k", label="", ls="-"):
         """Draw flux line for multi-run overlay."""
         if record.flux_series is not None:
-            t_hr = np.arange(len(record.flux_series)) * record.flux_dt / 3600.0
+            t_hr, _ = self._flux_local_time(record)
             ax.plot(t_hr, record.flux_series, color=color, ls=ls, lw=0.8,
                     label=label)
 

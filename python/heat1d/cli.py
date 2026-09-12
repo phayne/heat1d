@@ -411,6 +411,10 @@ def main(
         # The Horizons flux already captures the real orbital geometry.
         r0 = spice_meta.get("initial_range_au")
         if r0 is not None:
+            # Copy first: _resolve_planet returns the shared module-level
+            # planet object for named planets, which must not be mutated.
+            import copy as _copy
+            planet = _copy.copy(planet)
             planet.S = 1361.0 / (r0 ** 2)
             planet.rAU = r0
             planet.eccentricity = 0.0
@@ -492,6 +496,7 @@ def main(
             c_equil_nperday = 480
         c_adaptive = config.adaptive_tol if config.adaptive_tol is not None else 0.0
         c_h = getattr(planet, "H", 0.06)
+        c_lt0 = spice_meta.get("lt0_hr") if use_spice and flux_series is not None else None
         model = CModel(
             planet=planet, lat=lat_rad, ndays=run_ndays,
             solver=run_solver, ti=55.0, h=c_h,
@@ -502,19 +507,23 @@ def main(
             slope=np.deg2rad(run_slope),
             slope_az=np.deg2rad(run_slope_az),
             ground_heating=ground_heating,
+            flux_lt0_hr=c_lt0,
         )
     else:
         lon_rad = np.deg2rad(lon)
         flux_noon_idx = None
+        flux_lt0_hr = None
         if use_spice and flux_series is not None:
             flux_noon_idx = spice_meta.get("noon_idx")
+            flux_lt0_hr = spice_meta.get("lt0_hr")
         model = Model(planet=planet, lat=lat_rad, lon=lon_rad, ndays=run_ndays,
                       config=config, flux_series=flux_series, flux_dt=flux_dt,
                       psr_d_D=psr_d_D,
                       slope=np.deg2rad(run_slope),
                       slope_az=np.deg2rad(run_slope_az),
                       ground_heating=ground_heating if run_slope > 0 else None,
-                      flux_noon_idx=flux_noon_idx)
+                      flux_noon_idx=flux_noon_idx,
+                      flux_lt0_hr=flux_lt0_hr)
 
     if not quiet:
         click.echo(f"Running model (backend={backend})...")
