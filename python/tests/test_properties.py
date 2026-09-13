@@ -70,6 +70,52 @@ class TestHeatCapacity:
         assert cp[-1] > cp[0]
 
 
+class TestFixedHeatCapacity:
+    """``planet.cp_fixed`` overrides the temperature-dependent model.
+
+    Set by the constant-thermal-inertia path with ``ti_no_tdep`` in both
+    the CLI (cli.py) and the GUI worker; without it being honored here
+    that option silently has no effect.
+    """
+
+    def test_overrides_polynomial(self):
+        import copy
+
+        p = copy.copy(planets.Moon)
+        T = np.array([100.0, 300.0])
+        varying = heatCapacity(p, T)
+        assert varying[0] != pytest.approx(varying[1])  # T-dependent by default
+
+        p.cp_fixed = p.cp0
+        np.testing.assert_allclose(heatCapacity(p, T), [p.cp0, p.cp0])
+
+    def test_overrides_biele_model(self):
+        """The override wins regardless of which cp model was requested."""
+        import copy
+
+        p = copy.copy(planets.Moon)
+        p.cp_fixed = 750.0
+        cp = heatCapacity(p, np.array([90.0, 400.0]), model="biele2022")
+        np.testing.assert_allclose(cp, [750.0, 750.0])
+
+    def test_scalar_input(self):
+        import copy
+
+        p = copy.copy(planets.Moon)
+        p.cp_fixed = 600.0
+        assert float(heatCapacity(p, 250.0)) == pytest.approx(600.0)
+
+    def test_absent_attribute_is_inert(self):
+        """Planets without cp_fixed keep the temperature-dependent model."""
+        import copy
+
+        p = copy.copy(planets.Moon)
+        assert not hasattr(p, "cp_fixed") or p.cp_fixed is None
+        T = np.array([100.0, 300.0])
+        np.testing.assert_allclose(heatCapacity(p, T),
+                                   heatCapacity(planets.Moon, T))
+
+
 class TestThermCond:
 
     def test_at_zero_T(self):

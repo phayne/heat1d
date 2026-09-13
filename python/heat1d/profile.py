@@ -50,8 +50,13 @@ class Profile(object):
         self.g2 = 2 * self.dz[0:-1] / self.d3z[0:]  # A.K.A. "q" in the Appendix
 
         # Thermophysical properties (default exponential model)
-        self.kc = kd - (kd - ks) * np.exp(-self.z / H)
-        self.rho = rhod - (rhod - rhos) * np.exp(-self.z / H)
+        if H > 0:
+            self.kc = kd - (kd - ks) * np.exp(-self.z / H)
+            self.rho = rhod - (rhod - rhos) * np.exp(-self.z / H)
+        else:
+            # No depth dependence: uniform deep-layer values (matches C backend)
+            self.kc = np.full_like(self.z, kd)
+            self.rho = np.full_like(self.z, rhod)
 
         # Apply custom layers if provided
         self.custom_layers = custom_layers or []

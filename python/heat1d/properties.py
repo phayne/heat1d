@@ -96,6 +96,9 @@ def heatCapacity(planet, T, model="polynomial"):
     np.ndarray
         Heat capacity cp [J kg-1 K-1]
     """
+    cp_fixed = getattr(planet, 'cp_fixed', None)
+    if cp_fixed is not None:
+        return np.full_like(np.asarray(T, dtype=float), cp_fixed)
     if model == "biele2022":
         return heatCapacity_biele(T)
     c = planet.cpCoeff
