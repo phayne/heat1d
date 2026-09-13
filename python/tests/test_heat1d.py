@@ -17,7 +17,7 @@ def test_import():
 
 def test_version():
     """Version string is set."""
-    assert heat1d.__version__ == "0.4.0"
+    assert heat1d.__version__ == "0.4.1"
 
 
 def test_basic_model_run():
