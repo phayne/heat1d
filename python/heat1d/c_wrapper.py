@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +20,37 @@ import numpy as np
 C_DIR = Path(__file__).resolve().parents[2] / "c"
 
 _SOLVER_MAP = {"explicit": 0, "crank-nicolson": 1, "implicit": 2, "fourier-matrix": 3}
+
+
+def _native_arch_prefix():
+    """Command prefix that builds for the machine's native architecture.
+
+    A Python interpreter running under Rosetta on Apple Silicon reports
+    ``x86_64``, so a ``make`` launched from it compiles x86_64 objects
+    that cannot link against the arm64 Homebrew libraries the Makefile
+    points at (``ld: symbol(s) not found for architecture x86_64``).
+    Running the build through ``arch -arm64`` puts the compiler back on
+    the hardware's architecture.
+
+    Returns
+    -------
+    list[str]
+        Prefix to prepend to the build command; empty when the process
+        already matches the hardware.
+    """
+    if sys.platform != "darwin":
+        return []
+    try:
+        translated = subprocess.run(
+            ["sysctl", "-n", "sysctl.proc_translated"],
+            capture_output=True, text=True,
+        )
+    except OSError:
+        return []
+    # The key is absent on Intel Macs and 0 when running natively.
+    if translated.returncode == 0 and translated.stdout.strip() == "1":
+        return ["arch", "-arm64"]
+    return []
 
 
 def build_c(c_dir=None, force=False):
@@ -47,15 +79,25 @@ def build_c(c_dir=None, force=False):
     if exe.exists() and not force:
         return exe
 
-    result = subprocess.run(
-        ["make", "-C", str(c_dir), "all", "test_validate"],
-        capture_output=True,
-        text=True,
-    )
+    build = [*_native_arch_prefix(), "make", "-C", str(c_dir),
+             "all", "test_validate"]
+    result = subprocess.run(build, capture_output=True, text=True)
+
     if result.returncode != 0:
-        raise RuntimeError(
-            f"C build failed:\n{result.stderr}\n{result.stdout}"
-        )
+        # Object files left from an earlier build for a different
+        # architecture (or an interrupted one) are newer than their
+        # sources, so make reuses them and the link fails.  A clean
+        # rebuild is the fix; retry once before giving up.
+        first = f"{result.stderr}\n{result.stdout}"
+        subprocess.run([*_native_arch_prefix(), "make", "-C", str(c_dir),
+                        "clean"], capture_output=True, text=True)
+        result = subprocess.run(build, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"C build failed (retried after 'make clean').\n"
+                f"--- first attempt ---\n{first}\n"
+                f"--- after clean ---\n{result.stderr}\n{result.stdout}"
+            )
     return exe
 
 
