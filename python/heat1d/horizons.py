@@ -558,6 +558,99 @@ def _parse_horizons_date(date_str):
 
 
 # ---------------------------------------------------------------------------
+# Local solar time
+# ---------------------------------------------------------------------------
+
+def solar_hour_angle(solar_elevation_deg, azimuth_deg, lat_deg):
+    """Solar hour angle from apparent azimuth / elevation.
+
+    Inverts the standard horizontal-coordinate transformation to recover
+    the hour angle *h* of the Sun, which is zero at local (true solar)
+    noon and increases westward through the afternoon.  Working from
+    az/el makes this exact and independent of the sampling interval,
+    unlike locating noon as the sample of maximum elevation.
+
+    The transformation used is::
+
+        cos(d) sin(h) = -cos(el) sin(A)
+        cos(d) cos(h) =  cos(lat) sin(el) - sin(lat) cos(el) cos(A)
+
+    so ``h = atan2(-cos(el) sin(A), cos(lat) sin(el) - sin(lat) cos(el) cos(A))``.
+
+    Parameters
+    ----------
+    solar_elevation_deg : array_like
+        Apparent solar elevation above the local horizon [degrees].
+    azimuth_deg : array_like
+        Apparent solar azimuth [degrees, clockwise from north].
+    lat_deg : float
+        Observer latitude [degrees].
+
+    Returns
+    -------
+    np.ndarray
+        Hour angle [rad] in ``[-pi, pi)``; 0 at local noon, positive in
+        the afternoon.
+    """
+    el = np.deg2rad(np.asarray(solar_elevation_deg, dtype=float))
+    az = np.deg2rad(np.asarray(azimuth_deg, dtype=float))
+    lat = np.deg2rad(float(lat_deg))
+
+    y = -np.cos(el) * np.sin(az)
+    x = np.cos(lat) * np.sin(el) - np.sin(lat) * np.cos(el) * np.cos(az)
+    return np.arctan2(y, x)
+
+
+def hour_angle_to_local_time(h):
+    """Convert an hour angle [rad] to local time [planetary hours past noon].
+
+    The result is wrapped into ``[0, 24)``, matching the heat1d
+    convention in which a local time of 0 (or 24) is local noon.
+    """
+    lt = np.mod(np.asarray(h, dtype=float) / (2.0 * np.pi) * 24.0, 24.0)
+    # An hour angle a hair below zero wraps to 24.0 rather than 0.0;
+    # both mean noon, but 0 keeps the reported time axis in [0, 24).
+    return np.where(24.0 - lt < 1e-9, 0.0, lt)
+
+
+def _initial_range_au(observer_range_au):
+    """Sun distance at the start of an ephemeris [AU], or ``None``.
+
+    Horizons reports unavailable values as ``n.a.``, which parses to
+    NaN; the first finite sample is used so a gap at the start of the
+    series cannot poison the solar constant derived from it.
+    """
+    r = np.asarray(observer_range_au, dtype=float)
+    finite = r[np.isfinite(r) & (r > 0.0)]
+    return float(finite[0]) if len(finite) else None
+
+
+def _noon_index(lt0_hr, dt, day_s, n_samples):
+    """Index of the first local noon in a flux series.
+
+    Parameters
+    ----------
+    lt0_hr : float
+        Local time of sample 0 [planetary hours past noon, 0-24).
+    dt : float
+        Sample spacing [s].
+    day_s : float or None
+        Length of the solar day [s].
+    n_samples : int
+        Number of samples in the series.
+
+    Returns
+    -------
+    int
+        Index of the sample closest to local noon, clipped to the series.
+    """
+    if not day_s or dt <= 0:
+        return 0
+    t_noon = ((24.0 - lt0_hr) % 24.0) / 24.0 * day_s
+    return int(min(max(round(t_noon / dt), 0), max(n_samples - 1, 0)))
+
+
+# ---------------------------------------------------------------------------
 # Flux computation
 # ---------------------------------------------------------------------------
 
@@ -813,6 +906,42 @@ def _ellipsoid_normal(lat_rad, lon_rad, a, b, c):
     return nx / mag, ny / mag, nz / mag
 
 
+def _body_center_hour_angle(sun_ecl_lon_deg, times_utc, planet, lon_deg):
+    """Hour angle and solar declination for a body-center Horizons query.
+
+    The body-center path has no surface observer, so the local solar
+    geometry is reconstructed analytically from the body's sidereal
+    rotation and the Sun's ecliptic longitude.
+
+    Returns
+    -------
+    h : np.ndarray
+        Hour angle [rad] at each sample (0 = local noon).
+    dec : np.ndarray
+        Solar declination [rad] at each sample.
+    """
+    from .orbits import siderealPeriod
+
+    lambda_sun = np.deg2rad(np.asarray(sun_ecl_lon_deg, dtype=float))
+    obliq = planet.obliquity if planet.obliquity is not None else 0.0
+
+    # Solar declination from ecliptic longitude + obliquity
+    # Same as orbits.py:188 where (nu + Lp) = ecliptic longitude
+    dec = np.arcsin(np.sin(obliq) * np.sin(lambda_sun))
+
+    # Elapsed time from first sample
+    t0 = _parse_horizons_date(times_utc[0])
+    t_elapsed = np.array([
+        (_parse_horizons_date(ts) - t0).total_seconds()
+        for ts in times_utc
+    ])
+
+    # Hour angle from sidereal rotation + ecliptic sun position
+    P_sid = siderealPeriod(planet.day, planet.year)
+    h = 2.0 * np.pi * t_elapsed / P_sid + np.deg2rad(lon_deg) - lambda_sun
+    return h, dec
+
+
 def body_center_to_flux(sun_ecl_lon_deg, sun_ecl_lat_deg,
                         observer_range_au, times_utc,
                         planet, lat_deg, lon_deg):
@@ -849,29 +978,15 @@ def body_center_to_flux(sun_ecl_lon_deg, sun_ecl_lat_deg,
     flux : np.ndarray
         Absorbed surface flux [W/m²].
     """
-    from .orbits import siderealPeriod, cosSolarZenith
+    from .orbits import cosSolarZenith
 
-    lambda_sun = np.deg2rad(np.asarray(sun_ecl_lon_deg, dtype=float))
     r = np.asarray(observer_range_au, dtype=float)
-    obliq = planet.obliquity if planet.obliquity is not None else 0.0
     lat_rad = np.deg2rad(lat_deg)
     lon_rad = np.deg2rad(lon_deg)
 
-    # Solar declination from ecliptic longitude + obliquity
-    # Same as orbits.py:188 where (nu + Lp) = ecliptic longitude
-    dec = np.arcsin(np.sin(obliq) * np.sin(lambda_sun))
-
-    # Elapsed time from first sample
-    t0 = _parse_horizons_date(times_utc[0])
-    t_elapsed = np.array([
-        (_parse_horizons_date(ts) - t0).total_seconds()
-        for ts in times_utc
-    ])
-
-    # Hour angle from sidereal rotation + ecliptic sun position
-    P_sid = siderealPeriod(planet.day, planet.year)
-    TWOPI = 2.0 * np.pi
-    h = TWOPI * t_elapsed / P_sid + lon_rad - lambda_sun
+    h, dec = _body_center_hour_angle(
+        sun_ecl_lon_deg, times_utc, planet, lon_deg
+    )
 
     # Check if body is ellipsoidal
     shape = getattr(planet, "shape", None)
@@ -1118,6 +1233,14 @@ def _fetch_body_center(bid, lat_deg, lon_deg, start_time, stop_time,
         lon_deg,
     )
 
+    # Local solar time of the first sample, from the analytical hour
+    # angle (0 = local noon).  Needed so the model's output time axis is
+    # true local time and not "hours since the Horizons start epoch".
+    h0, _ = _body_center_hour_angle(
+        result["sun_ecl_lon_deg"], result["times_utc"], planet, lon_deg
+    )
+    lt0_hr = float(hour_angle_to_local_time(np.atleast_1d(h0)[0]))
+
     metadata = {
         "body_id": bid,
         "n_samples": result["n_samples"],
@@ -1127,7 +1250,11 @@ def _fetch_body_center(bid, lat_deg, lon_deg, start_time, stop_time,
         "times_utc": result["times_utc"],
         "eclipse_info": None,
         "mode": "body_center",
-        "initial_range_au": float(result["observer_range_au"][0]),
+        "initial_range_au": _initial_range_au(result["observer_range_au"]),
+        "lt0_hr": lt0_hr,
+        "noon_idx": _noon_index(
+            lt0_hr, dt, getattr(planet, "day", None), result["n_samples"]
+        ),
     }
 
     return flux, dt, metadata
@@ -1205,9 +1332,13 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
         Time spacing [seconds].
     metadata : dict
         Query metadata including optional ``eclipse_info``, ``mode``,
-        and ``noon_idx`` (index of maximum solar elevation within the
-        first diurnal cycle — used by the Model to phase-align sloped
-        flux series whose peak is not at local noon).
+        ``noon_idx`` (index of the sample closest to local noon) and
+        ``lt0_hr`` (local solar time of the first sample, in planetary
+        hours past noon).  The Model uses ``lt0_hr`` to phase-align the
+        flux series and to label its output time axis with true local
+        time.  ``initial_range_au`` is the Sun distance at the start of
+        the series, used by the callers to match the equilibration flux
+        to the start of the Horizons output.
 
     Raises
     ------
@@ -1308,15 +1439,31 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
         slope_az=np.deg2rad(slope_az_deg),
     )
 
-    # Local noon = maximum solar elevation within the first diurnal
-    # cycle.  Valid regardless of slope (unlike argmax of the flux).
+    # Local solar time of the first sample, from the hour angle implied
+    # by the apparent solar azimuth / elevation.  This is exact (no
+    # quantization by the sample interval) and valid regardless of slope
+    # or latitude, unlike locating noon as the elevation maximum.
     day_s = planet_day_s or getattr(planet, "day", None)
     elev_arr = np.asarray(result["solar_elevation_deg"], dtype=float)
-    if day_s and dt > 0:
-        n_first_day = min(int(round(day_s / dt)), len(elev_arr))
+    az_arr = result.get("azimuth_deg")
+    lt0_hr = None
+    if az_arr is not None and len(elev_arr) > 0:
+        h = solar_hour_angle(elev_arr, az_arr, lat_deg)
+        lt0_hr = float(hour_angle_to_local_time(h[0]))
+
+    if lt0_hr is not None and day_s and dt > 0:
+        noon_idx = _noon_index(lt0_hr, dt, day_s, len(elev_arr))
     else:
-        n_first_day = len(elev_arr)
-    noon_idx = int(np.argmax(elev_arr[:max(n_first_day, 1)]))
+        # Fallback: local noon = maximum solar elevation within the
+        # first diurnal cycle.  Valid regardless of slope (unlike
+        # argmax of the flux), but quantized by the sample interval.
+        if day_s and dt > 0:
+            n_first_day = min(int(round(day_s / dt)), len(elev_arr))
+        else:
+            n_first_day = len(elev_arr)
+        noon_idx = int(np.argmax(elev_arr[:max(n_first_day, 1)]))
+        if day_s and dt > 0:
+            lt0_hr = float((-noon_idx * dt / day_s * 24.0) % 24.0)
 
     # Apply eclipse reductions if applicable
     eclipse_info = None
@@ -1357,6 +1504,8 @@ def fetch_solar_flux(planet_name, lon_deg, lat_deg, start_time, stop_time,
         "eclipse_info": eclipse_info,
         "mode": "surface_observer",
         "noon_idx": noon_idx,
+        "lt0_hr": lt0_hr,
+        "initial_range_au": _initial_range_au(result["observer_range_au"]),
     }
 
     return flux, dt, metadata

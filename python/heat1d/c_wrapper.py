@@ -159,6 +159,11 @@ class CModel:
         terrain (via an internal flat companion run in the C code;
         roughly doubles the C runtime). Default True; only active when
         slope > 0.
+    flux_lt0_hr : float, optional
+        Local solar time of ``flux_series[0]`` [planetary hours past
+        noon].  The C model's own clock starts at zero with the flux
+        series, so this offsets ``lt`` to report true local time.
+        Default ``None`` (series starts at local noon).
     c_dir : Path, optional
         Path to the C source directory.
     """
@@ -167,7 +172,7 @@ class CModel:
                  ti=55.0, h=0.06, equil_nperday=480, nperday_output=480,
                  adaptive_tol=0.0, flux_series=None, flux_dt=None,
                  slope=0.0, slope_az=0.0, ground_heating=True,
-                 c_dir=None, _force_yaml=False):
+                 c_dir=None, _force_yaml=False, flux_lt0_hr=None):
         self.planet = planet
         self.lat = lat
         self.ndays = ndays
@@ -179,6 +184,8 @@ class CModel:
         self.adaptive_tol = adaptive_tol
         self.flux_series = np.asarray(flux_series) if flux_series is not None else None
         self.flux_dt = flux_dt
+        # Local time [planetary hours past noon] of output t = 0
+        self.lt0 = float(flux_lt0_hr) if flux_lt0_hr is not None else 0.0
         self.slope = slope
         self.slope_az = slope_az
         self.ground_heating = bool(ground_heating)
@@ -287,6 +294,9 @@ class CModel:
                 # Fallback: uniform spacing over ndays
                 self.lt = np.linspace(0, 24.0 * self.ndays, self.N_steps,
                                       endpoint=False)
+            # The C clock starts at zero with the flux series; shift to
+            # true local time when the series does not start at noon.
+            self.lt = self.lt + self.lt0
 
             # Parse grid (depth, dz, rho, kc)
             grid_file = Path(tmpdir) / "profile_z_dz_rho_k.txt"

@@ -128,6 +128,14 @@ The CLI generates the following output files:
 - `{prefix}_grid.csv`: Depth grid with density and conductivity
 - `{prefix}_plot.png`: Combined profile and diurnal curve plot (unless `--no-plot`)
 
+The `local_time_hr` column is true local solar time in planetary hours past
+noon: 0 (or 24) is local noon, 6 is sunset, 12 is local midnight.  With
+`--use-spice` the run starts at a UTC epoch whose local time depends on
+longitude, so the series does not begin at noon — it begins at whatever local
+time that epoch corresponds to, and the column runs from there through one
+full diurnal cycle (e.g. 7.68 to 30.68).  Peak temperature still falls near
+`local_time_hr % 24 == 0`.
+
 ## C Implementation
 
 The same YAML configuration files can also be used with the C implementation

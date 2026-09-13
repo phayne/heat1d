@@ -1075,3 +1075,127 @@ class TestWestPositiveErrorDetection:
         from heat1d.horizons import _detect_west_positive
 
         assert _detect_west_positive(SAMPLE_RESPONSE) is False
+
+
+class TestSolarHourAngle:
+    """Local solar time recovered from apparent azimuth / elevation."""
+
+    def test_inverts_forward_geometry(self):
+        """Round-trips the az/el used by the analytical insolation model."""
+        from heat1d import orbits
+        from heat1d.horizons import solar_hour_angle
+
+        lat = np.deg2rad(26.0)
+        dec = np.deg2rad(10.0)
+        for h in np.linspace(-np.pi, np.pi, 37)[:-1]:
+            cz = orbits.cosSolarZenith(lat, dec, h, clip=False)
+            elev = np.rad2deg(np.arcsin(np.clip(cz, -1.0, 1.0)))
+            az = np.rad2deg(orbits.solarAzimuth(lat, dec, h))
+            h_rec = float(solar_hour_angle(elev, az, 26.0))
+            wrapped = (h_rec - h + np.pi) % (2 * np.pi) - np.pi
+            assert wrapped == pytest.approx(0.0, abs=1e-9)
+
+    def test_high_latitude_and_southern(self):
+        """Exact at high and southern latitudes, where noon can be poorly
+        resolved by an elevation maximum."""
+        from heat1d import orbits
+        from heat1d.horizons import solar_hour_angle
+
+        for lat_deg in (-80.0, -45.0, 5.0, 85.0):
+            lat = np.deg2rad(lat_deg)
+            dec = np.deg2rad(-15.0)
+            for h in (-2.5, -0.3, 0.0, 1.1, 2.9):
+                cz = orbits.cosSolarZenith(lat, dec, h, clip=False)
+                elev = np.rad2deg(np.arcsin(np.clip(cz, -1.0, 1.0)))
+                az = np.rad2deg(orbits.solarAzimuth(lat, dec, h))
+                h_rec = float(solar_hour_angle(elev, az, lat_deg))
+                wrapped = (h_rec - h + np.pi) % (2 * np.pi) - np.pi
+                assert wrapped == pytest.approx(0.0, abs=1e-9)
+
+    def test_noon_is_zero(self):
+        """Sun on the meridian gives hour angle 0 / local time 0."""
+        from heat1d.horizons import hour_angle_to_local_time, solar_hour_angle
+
+        h = solar_hour_angle(64.0, 180.0, 26.0)  # due south, summer noon
+        assert float(h) == pytest.approx(0.0, abs=1e-9)
+        assert float(hour_angle_to_local_time(h)) == pytest.approx(0.0)
+
+    def test_local_time_wraps_into_day(self):
+        """Local time is reported in [0, 24) planetary hours past noon."""
+        from heat1d.horizons import hour_angle_to_local_time
+
+        lt = hour_angle_to_local_time(np.array([-np.pi / 2, 0.0, np.pi / 2]))
+        np.testing.assert_allclose(lt, [18.0, 0.0, 6.0])
+
+    def test_noon_index_matches_local_time(self):
+        """_noon_index converts a starting local time to a sample index."""
+        from heat1d.horizons import _noon_index
+
+        day = planets.Moon.day
+        dt = day / 480.0
+        # Series starting 6 hr past noon reaches the next noon 18 hr later
+        assert _noon_index(6.0, dt, day, 960) == 360
+        assert _noon_index(0.0, dt, day, 960) == 0
+
+
+class TestInitialRangeAu:
+    """The Sun distance callers use to match equilibration to the output."""
+
+    def test_first_finite_sample(self):
+        from heat1d.horizons import _initial_range_au
+
+        assert _initial_range_au(np.array([1.01, 0.98])) == pytest.approx(1.01)
+
+    def test_skips_leading_gaps(self):
+        """Horizons reports missing values as n.a., which parse to NaN."""
+        from heat1d.horizons import _initial_range_au
+
+        r = np.array([np.nan, np.nan, 0.99, 1.00])
+        assert _initial_range_au(r) == pytest.approx(0.99)
+
+    def test_none_when_unavailable(self):
+        from heat1d.horizons import _initial_range_au
+
+        assert _initial_range_au(np.array([np.nan, np.nan])) is None
+        assert _initial_range_au(np.array([])) is None
+
+
+@pytest.mark.slow
+class TestMetadataIntegration:
+    """Metadata the CLI and GUI depend on, against the real API."""
+
+    @pytest.mark.parametrize("body_center", [False, True])
+    def test_metadata_keys_present_in_both_modes(self, body_center):
+        """Both query paths supply the keys the callers read."""
+        from heat1d.horizons import fetch_solar_flux
+
+        flux, dt, meta = fetch_solar_flux(
+            planet_name="Moon", lon_deg=45.0, lat_deg=0.0,
+            start_time="2024-06-15 00:00", stop_time="2024-06-18 00:00",
+            planet=planets.Moon, planet_day_s=planets.Moon.day,
+            output_interval_s=planets.Moon.day / 480, eclipses=False,
+            body_center=body_center,
+        )
+        for key in ("lt0_hr", "noon_idx", "initial_range_au", "mode"):
+            assert meta.get(key) is not None, f"missing {key}"
+        assert 0.0 <= meta["lt0_hr"] < 24.0
+        # Sun-Moon distance is ~1 AU
+        assert 0.95 < meta["initial_range_au"] < 1.05
+
+    def test_cli_does_not_mutate_shared_planet(self, tmp_path):
+        """The solar-distance correction must not touch planets.Moon."""
+        from click.testing import CliRunner
+
+        from heat1d.cli import main
+
+        before = (planets.Moon.S, planets.Moon.rAU, planets.Moon.eccentricity)
+        result = CliRunner().invoke(main, [
+            "--planet", "Moon", "--lat", "0", "--lon", "90",
+            "--use-spice", "--start-time", "2024-01-03 00:00",
+            "--ndays", "1", "--solver", "crank-nicolson",
+            "--output-dir", str(tmp_path), "--prefix", "t",
+            "--no-plot", "--quiet",
+        ])
+        assert result.exit_code == 0, result.output
+        after = (planets.Moon.S, planets.Moon.rAU, planets.Moon.eccentricity)
+        assert before == after

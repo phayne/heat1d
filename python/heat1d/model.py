@@ -23,7 +23,8 @@ class Model(object):
     # Initialization
     def __init__(self, planet=planets.Moon, lat=0, lon=0, ndays=1, config=Configurator(),
                  flux_series=None, flux_dt=None, custom_layers=None, psr_d_D=None,
-                 slope=0.0, slope_az=0.0, ground_heating=None, flux_noon_idx=None):
+                 slope=0.0, slope_az=0.0, ground_heating=None, flux_noon_idx=None,
+                 flux_lt0_hr=None):
 
         # Initialize
         self.planet = planet
@@ -49,10 +50,14 @@ class Model(object):
         self._Q_ind = None
         self._Q_ind_dt = None
         self._gh_offset = 0.0
-        # Index of local noon in an external flux_series (optional hint;
-        # required for phase alignment of slope-projected series whose
-        # peak is not at noon).
+        # Local-time phase of an external flux_series.  ``flux_lt0_hr``
+        # is the local solar time of flux_series[0] in planetary hours
+        # past noon (exact, from ephemeris geometry); ``flux_noon_idx``
+        # is the coarser index-of-noon form kept for backwards
+        # compatibility.  Either is required to phase-align a
+        # slope-projected series, whose peak is not at noon.
         self._flux_noon_idx = flux_noon_idx
+        self._flux_lt0_hr = flux_lt0_hr
         self._custom_layers = custom_layers
         self.Sabs = self.planet.S * (1.0 - self.planet.albedo)
         self.r = self.planet.rAU  # solar distance [AU]
@@ -72,8 +77,10 @@ class Model(object):
         self._nu0 = self.nu
 
         # External flux time series (optional; None = compute on-the-fly)
-        # flux_series: 1-D array of absorbed flux [W/m^2], aligned so that
-        #              flux_series[0] corresponds to t=0 (local noon).
+        # flux_series: 1-D array of absorbed flux [W/m^2].  flux_series[0]
+        #              corresponds to output-phase t=0, whose local time is
+        #              self.lt0 (0 = local noon, the default when no phase
+        #              information is supplied).
         # flux_dt: uniform time spacing [s] between flux samples.
         # Active only during the output phase; equilibration always uses
         # the built-in surfFlux().
@@ -149,6 +156,13 @@ class Model(object):
             self._adaptive_tol = config.adaptive_tol
             self._adaptive_order = 2 if config.solver == "crank-nicolson" else 1
             self._adaptive_dt = self.dt
+
+        # Local solar time [planetary hours past noon] of output t = 0.
+        # Zero for the built-in insolation, which always starts the
+        # output phase at local noon; non-zero for an external flux
+        # series that begins at some other local time (e.g. a Horizons
+        # query whose start epoch is not local noon at this longitude).
+        self.lt0 = 0.0
 
         # Array for output temperatures and local times
         self.N_steps = int((ndays * planet.day) / self.dtout)
@@ -254,7 +268,7 @@ class Model(object):
                 while t_target - self.t > 1e-6:
                     self.advance(dt_max=t_target - self.t)
                 self.T[i, :] = self.profile.T
-                self.lt[i] = self.t / self.planet.day * 24.0
+                self.lt[i] = self.lt0 + self.t / self.planet.day * 24.0
         else:
             # Full output: record every solver step
             T_list = []
@@ -262,7 +276,7 @@ class Model(object):
             while self.t < endtime:
                 self.advance()
                 T_list.append(self.profile.T.copy())
-                lt_list.append(self.t / self.planet.day * 24.0)
+                lt_list.append(self.lt0 + self.t / self.planet.day * 24.0)
             self.T = np.array(T_list)
             self.lt = np.array(lt_list)
             self.N_steps = len(T_list)
@@ -282,11 +296,14 @@ class Model(object):
             flux = self.flux_series
             dt = self.flux_dt
             nsteps = len(flux)
+            # External series may not start at noon; recover its local
+            # time so the output axis and the periodic indirect-flux
+            # table are both referenced to local noon.
+            t_noon = self._flux_time_to_noon()
+            if t_noon is not None:
+                self.lt0 = (-t_noon / self.planet.day * 24.0) % 24.0
             if self._Q_ind is not None:
-                # External series may not start at noon; use the noon
-                # hint to phase the periodic indirect-flux table.
-                noon_idx = self._flux_noon_idx or 0
-                self._gh_offset = -noon_idx * dt
+                self._gh_offset = -(t_noon or 0.0)
                 flux = flux + self._ground_heating_flux(np.arange(nsteps) * dt)
         else:
             flux, dt = precompute_diurnal_flux(
@@ -318,15 +335,21 @@ class Model(object):
             chi=config.chi,
         )
 
-        # Populate output arrays (same format as time-stepping solvers)
-        # The Fourier solver computes one periodic cycle; tile for ndays > 1
-        if self.ndays > 1:
-            T_all = np.tile(T_all, (self.ndays, 1))
-            nsteps = nsteps * self.ndays
+        # Populate output arrays (same format as time-stepping solvers).
+        # With a precomputed flux the solver returns one periodic cycle,
+        # which is tiled for ndays > 1.  An external series already spans
+        # the full requested interval, so it is used as-is.
+        if self.flux_series is None:
+            reps = int(round(self.ndays))
+            if reps > 1:
+                T_all = np.tile(T_all, (reps, 1))
+                nsteps = nsteps * reps
         self.N_steps = nsteps
         self.N_z = len(self.profile.z)
         self.T = T_all
-        self.lt = np.linspace(0, 24.0 * self.ndays, nsteps, endpoint=False)
+        # Local time from the actual sample spacing: len(flux)*dt need
+        # not equal ndays*day for an external series.
+        self.lt = self.lt0 + np.arange(nsteps) * dt / self.planet.day * 24.0
 
     def _equilibrate_fourier(self):
         """Use the Fourier-matrix solver for fast equilibration.
@@ -495,26 +518,30 @@ class Model(object):
         flux series and advances the model (with analytical surfFlux) to match,
         eliminating the initial transient that would otherwise occur.
 
-        When ``flux_noon_idx`` was passed to the constructor it is used
-        instead of the argmax estimate — required for slope-projected
-        flux series, whose peak is generally not at local noon (e.g. an
-        east-facing slope peaks in the morning).
+        When ``flux_lt0_hr`` or ``flux_noon_idx`` was passed to the
+        constructor it is used instead of the argmax estimate — required
+        for slope-projected flux series, whose peak is generally not at
+        local noon (e.g. an east-facing slope peaks in the morning).
+
+        Also sets ``self.lt0``, the local time of the first flux sample,
+        so the output ``lt`` array is true local time rather than time
+        since the start of the series.
         """
         day = self.planet.day
         n_per_day = min(int(round(day / self.flux_dt)), len(self.flux_series))
         if n_per_day < 2:
             return
 
-        if self._flux_noon_idx is not None:
-            noon_idx = int(self._flux_noon_idx)
-        else:
-            # Peak flux in the first diurnal cycle ≈ local noon
-            noon_idx = int(np.argmax(self.flux_series[:n_per_day]))
-            if self.flux_series[noon_idx] <= 0:
-                return  # polar night — no diurnal phase to match
+        t_noon = self._flux_time_to_noon()
+        if t_noon is None:
+            return  # polar night — no diurnal phase to match
+
+        # Local time of flux_series[0]: local noon is t_noon later, so
+        # the series starts (24 - t_noon) hours past the previous noon.
+        self.lt0 = (-t_noon / day * 24.0) % 24.0
 
         # Time to advance from current noon to the flux series start
-        t_advance = (day - noon_idx * self.flux_dt) % day
+        t_advance = (day - t_noon) % day
         if t_advance >= self.flux_dt:
             # Run analytical model forward (surfFlux, not external flux).
             # _gh_offset is still 0 here, consistent with the analytical
@@ -525,8 +552,29 @@ class Model(object):
 
         # Ground-heating table phase for the output clock (t=0 at series
         # start, reset by run() after this call): Q_ind[0] corresponds
-        # to local noon, which occurs at t = noon_idx * flux_dt.
-        self._gh_offset = -noon_idx * self.flux_dt
+        # to local noon, which occurs at t = t_noon.
+        self._gh_offset = -t_noon
+
+    def _flux_time_to_noon(self):
+        """Time from the start of ``flux_series`` to the first local noon [s].
+
+        Uses the exact ``flux_lt0_hr`` phase when available, falling back
+        to the ``flux_noon_idx`` sample index and finally to the peak of
+        the first diurnal cycle (valid only for flat surfaces).
+
+        Returns ``None`` when the phase cannot be determined (polar
+        night, where the flux never rises above zero).
+        """
+        day = self.planet.day
+        if self._flux_lt0_hr is not None:
+            return ((24.0 - float(self._flux_lt0_hr)) % 24.0) / 24.0 * day
+        if self._flux_noon_idx is not None:
+            return (int(self._flux_noon_idx) * self.flux_dt) % day
+        n_per_day = min(int(round(day / self.flux_dt)), len(self.flux_series))
+        noon_idx = int(np.argmax(self.flux_series[:max(n_per_day, 1)]))
+        if self.flux_series[noon_idx] <= 0:
+            return None
+        return (noon_idx * self.flux_dt) % day
 
     def _lookupFlux(self):
         """Look up absorbed flux from the external flux_series via interpolation.
@@ -608,7 +656,8 @@ class Model(object):
 
         The table phase is (t + _gh_offset) mod day, where _gh_offset
         is 0 whenever t=0 corresponds to local noon (all analytical
-        phases) and -noon_idx*flux_dt during external-flux output.
+        phases) and -t_noon during external-flux output, where t_noon
+        is the time from the start of the series to local noon.
         Accepts scalars or arrays.
         """
         n = len(self._Q_ind)

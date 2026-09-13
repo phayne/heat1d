@@ -351,6 +351,7 @@ class SimulationWorker(QThread):
             slope_az=np.deg2rad(slope_az_deg),
             ground_heating=ground_heating if slope_deg else None,
             flux_noon_idx=metadata.get("noon_idx") if use_spice else None,
+            flux_lt0_hr=metadata.get("lt0_hr") if use_spice else None,
         )
         model.run()
 
