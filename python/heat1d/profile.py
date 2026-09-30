@@ -3,6 +3,8 @@
 The Profile class defines the spatial grid and thermophysical properties,
 and delegates temperature updates to the appropriate solver.
 """
+import warnings
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -65,6 +67,7 @@ class Profile(object):
             apply_custom_layers(self.z, self.kc, self.rho,
                                 self._chi_array, self.custom_layers)
             self._R350_array = self._chi_array / 350.0**3
+            self._check_layer_resolution()
         else:
             self._chi_array = None
             self._R350_array = None
@@ -78,6 +81,42 @@ class Profile(object):
 
         # Initialize thermophysical properties
         self.update_properties()
+
+    def _check_layer_resolution(self):
+        """Warn when the grid cannot adequately resolve a custom layer.
+
+        The grid (:func:`heat1d.grid.spatialGrid`) is sized from the
+        *background* material's skin depth alone, with no knowledge of
+        ``custom_layers``; a layer thinner than the resulting cell size
+        gets its properties assigned to whichever single grid cell(s)
+        happen to overlap it (see :mod:`heat1d.layers`), which can
+        substantially misrepresent the layer's true thermal resistance.
+        See :func:`heat1d.diagnostics.layer_resolution_check` for the
+        full per-cell analysis this warning is based on.
+        """
+        from .diagnostics import layer_resolution_check
+
+        for layer, result in zip(self.custom_layers,
+                                 layer_resolution_check(self)):
+            layer_R = layer.thickness / layer.kc
+            rel_error = (result["total_resistance_error"] / layer_R
+                        if layer_R > 0 else np.inf)
+            if rel_error > 0.5:
+                label = f" '{layer.label}'" if layer.label else ""
+                warnings.warn(
+                    f"Custom layer{label} ({layer.thickness*1000:.3g} mm, "
+                    f"z={layer.z_top*1000:.3g}-{layer.z_bottom*1000:.3g} mm) "
+                    f"is not well resolved by the grid: the cell(s) "
+                    f"overlapping it misrepresent its thermal resistance by "
+                    f"{rel_error*100:.0f}% of the layer's own resistance "
+                    f"(worst single cell off by "
+                    f"{result['max_ratio_deviation']:.2g}x). Increase "
+                    f"config.m (and possibly config.n) to shrink the "
+                    f"near-surface grid spacing below the layer thickness, "
+                    f"or see heat1d.diagnostics.layer_resolution_check for "
+                    f"a cell-by-cell breakdown.",
+                    stacklevel=3,
+                )
 
     # Temperature initialization
     def init_T(self, planet=planets.Moon, lat=0):

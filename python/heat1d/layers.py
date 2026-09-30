@@ -181,7 +181,13 @@ def compute_default_properties(z, planet):
     rho : np.ndarray or float
         Density [kg/m^3].
     """
-    z = np.asarray(z)
-    kc = planet.kd - (planet.kd - planet.ks) * np.exp(-z / planet.H)
-    rho = planet.rhod - (planet.rhod - planet.rhos) * np.exp(-z / planet.H)
+    z = np.asarray(z, dtype=float)
+    if planet.H > 0:
+        kc = planet.kd - (planet.kd - planet.ks) * np.exp(-z / planet.H)
+        rho = planet.rhod - (planet.rhod - planet.rhos) * np.exp(-z / planet.H)
+    else:
+        # No depth dependence: uniform deep-layer values (matches
+        # Profile's and the C backend's H=0 handling).
+        kc = np.full_like(z, planet.kd)
+        rho = np.full_like(z, planet.rhod)
     return kc, rho

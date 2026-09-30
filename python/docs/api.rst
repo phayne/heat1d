@@ -62,6 +62,13 @@ Orbits
    :members:
    :undoc-members:
 
+Diagnostics
+-----------
+
+.. automodule:: heat1d.diagnostics
+   :members:
+   :undoc-members:
+
 Validation
 ----------
 
