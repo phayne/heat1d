@@ -3,6 +3,8 @@
 The Profile class defines the spatial grid and thermophysical properties,
 and delegates temperature updates to the appropriate solver.
 """
+import warnings
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +12,7 @@ from . import planets
 
 from .boundary import botTemp, surfTemp
 from .config import Configurator, R350
-from .grid import skinDepth, spatialGrid
+from .grid import insert_custom_layer_boundaries, skinDepth, spatialGrid
 from .layers import apply_custom_layers
 from .properties import T_eq, heatCapacity, thermCond
 from .solvers import solve_crank_nicolson, solve_explicit, solve_implicit
@@ -42,7 +44,18 @@ class Profile(object):
 
         self.chi = config.chi
         self.R350 = R350(self.chi)
+
+        # custom_layers is resolved before the grid so its boundaries can
+        # be inserted as nodes: otherwise a boundary landing strictly
+        # inside a cell would have its properties assigned to whichever
+        # single node the cell's flux stencil uses (Eq A15), smearing the
+        # layer's true extent over that whole cell -- or, if the layer
+        # touches no node at all, apply_custom_layers would miss it
+        # completely. See heat1d.grid.insert_custom_layer_boundaries.
+        self.custom_layers = custom_layers or []
         self.z = spatialGrid(skinDepth(planet.day, kappa), config.m, config.n, config.b)
+        if self.custom_layers:
+            self.z = insert_custom_layer_boundaries(self.z, self.custom_layers)
         self.nlayers = np.size(self.z)  # number of model layers
         self.dz = np.diff(self.z)
         self.d3z = self.dz[1:] * self.dz[0:-1] * (self.dz[1:] + self.dz[0:-1])
@@ -58,13 +71,14 @@ class Profile(object):
             self.kc = np.full_like(self.z, kd)
             self.rho = np.full_like(self.z, rhod)
 
-        # Apply custom layers if provided
-        self.custom_layers = custom_layers or []
+        # Apply custom layers, now that their boundaries are guaranteed to
+        # coincide with grid nodes.
         if self.custom_layers:
             self._chi_array = np.full(self.nlayers, self.chi)
             apply_custom_layers(self.z, self.kc, self.rho,
                                 self._chi_array, self.custom_layers)
             self._R350_array = self._chi_array / 350.0**3
+            self._check_layer_resolution()
         else:
             self._chi_array = None
             self._R350_array = None
@@ -78,6 +92,44 @@ class Profile(object):
 
         # Initialize thermophysical properties
         self.update_properties()
+
+    def _check_layer_resolution(self):
+        """Warn on the rare layer insert_custom_layer_boundaries cannot fix.
+
+        ``self.z`` above already had a node inserted at every custom
+        layer's ``z_top``/``z_bottom`` (see
+        :func:`heat1d.grid.insert_custom_layer_boundaries`), which
+        normally makes a layer's resistance exact regardless of grid
+        coarseness. This is a safety net for the case that insertion
+        cannot fix: a layer thinner than its own merge tolerance (a
+        tiny fraction of the total grid depth) gets snapped away rather
+        than resolved. See
+        :func:`heat1d.diagnostics.layer_resolution_check` for the full
+        per-cell analysis this warning is based on.
+        """
+        from .diagnostics import layer_resolution_check
+
+        for layer, result in zip(self.custom_layers,
+                                 layer_resolution_check(self)):
+            layer_R = layer.thickness / layer.kc
+            rel_error = (result["total_resistance_error"] / layer_R
+                        if layer_R > 0 else np.inf)
+            if rel_error > 0.5:
+                label = f" '{layer.label}'" if layer.label else ""
+                warnings.warn(
+                    f"Custom layer{label} ({layer.thickness*1000:.3g} mm, "
+                    f"z={layer.z_top*1000:.3g}-{layer.z_bottom*1000:.3g} mm) "
+                    f"is not well resolved by the grid: the cell(s) "
+                    f"overlapping it misrepresent its thermal resistance by "
+                    f"{rel_error*100:.0f}% of the layer's own resistance "
+                    f"(worst single cell off by "
+                    f"{result['max_ratio_deviation']:.2g}x). Increase "
+                    f"config.m (and possibly config.n) to shrink the "
+                    f"near-surface grid spacing below the layer thickness, "
+                    f"or see heat1d.diagnostics.layer_resolution_check for "
+                    f"a cell-by-cell breakdown.",
+                    stacklevel=3,
+                )
 
     # Temperature initialization
     def init_T(self, planet=planets.Moon, lat=0):
