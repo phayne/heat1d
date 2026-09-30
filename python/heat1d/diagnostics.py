@@ -5,23 +5,51 @@ Appendix A2 (Eqs. A13-A18, A23-A25, A30), to expose *where* — at which
 depth and interface — the discrete model gains or loses energy, and how
 that error accumulates over the full column.
 
-Motivation
-----------
+Background: thin custom layers and the grid
+--------------------------------------------
 The interior stencil (Eqs A15-A18) evaluates the conductive flux across
 each inter-nodal segment using the conductivity at a *single* endpoint:
 
     F_j = k_j * (T[j+1] - T[j]) / dz_j        (Eq A15)
 
 i.e. the shallower node's conductivity represents the whole segment.
-This is a good approximation when k(z) varies slowly across a cell (the
-smooth exponential profile of Eq A2 that this scheme was designed for),
-but it is a poor one wherever a grid cell straddles a sharp property
+This is exact when a grid cell lies entirely within one material, but
+it is a poor approximation for a cell straddling a sharp property
 contrast — most commonly a thin, low-conductivity custom layer (see
-:mod:`heat1d.layers`) that the background-only grid (see
-:func:`heat1d.grid.spatialGrid`, sized from ``planet.ks``/``rhos``/
-``cp0`` alone, blind to any ``custom_layers``) fails to resolve.
+:mod:`heat1d.layers`) thinner than the surrounding grid spacing.
 
-Two more approximations compound this at the very top of the column:
+This module was built to investigate exactly that failure mode (a
+~2mm, sharply lower-conductivity surface veneer producing inaccurate,
+non-monotonically-convergent results), and the investigation found two
+separable things:
+
+1. The interior scheme has *no energy-conservation defect* --
+   :func:`column_energy_budget` shows ``residual`` sits at
+   floating-point noise at every node beyond the boundary-adjacent node
+   1 (a known, separate, pre-existing artifact -- see its docstring),
+   with or without a thin custom layer. It is exactly, locally
+   conservative for whatever piecewise-constant material properties it
+   ends up using.
+2. The reported inaccuracy came from *which* properties it used: a
+   layer thinner than the local grid spacing had its boundary smeared
+   across whichever cell straddled it, biasing that cell's effective
+   thermal resistance -- diagnosed with :func:`layer_resolution_check`.
+
+That resolution problem is now fixed by
+:func:`heat1d.grid.insert_custom_layer_boundaries`, which
+:class:`heat1d.profile.Profile` calls automatically: it guarantees a
+grid node at every custom layer's ``z_top``/``z_bottom``, so no cell
+can straddle a layer boundary any more, and ``layer_resolution_check``
+reports an exact match (ratio 1.0) for an ordinary layer regardless of
+grid coarseness. Both diagnostics remain useful: ``layer_resolution_check``
+as a pre-flight, no-simulation-needed check (and the basis for
+``Profile``'s automatic warning, now a safety net for the rare
+edge case the fix cannot cover -- a layer thinner than the boundary
+-insertion's own merge tolerance) and ``column_energy_budget`` as a
+general-purpose, time-resolved conservation check for any run.
+
+Two more approximations are worth knowing about at the very top of the
+column, independent of custom layers:
 
 * The surface boundary condition (Eqs A23-A25) estimates the flux at
   z=0 with a *three-point* one-sided derivative spanning nodes 0-2,
@@ -34,32 +62,6 @@ Two more approximations compound this at the very top of the column:
   equation -- so it has no discrete storage term to check for
   conservation against; energy accounting below deliberately excludes
   it (see :func:`column_energy_budget`).
-
-None of this is a bug in the ordinary (smoothly-varying, homogeneous or
-gently layered) case the model was validated against. It becomes a
-first-order effect for a thin, sharply-contrasting custom layer, which
-is exactly the failure mode this module is built to localize.
-
-What the flux-divergence probe actually finds
-----------------------------------------------
-Applied to a thin, low-conductivity custom layer thinner than the
-grid's near-surface cell size, :func:`column_energy_budget` shows *no*
-interior-node energy-conservation violation: ``residual`` sits at
-floating-point noise at every node beyond the boundary-adjacent node 1,
-whether or not a custom layer is present. The interior scheme is
-exactly, locally conservative for whatever piecewise-constant material
-properties it ends up using -- it is not "leaking" energy.
-
-The reported inaccuracy instead comes from *which* properties it uses:
-:func:`layer_resolution_check` shows that a grid cell straddling the
-layer's boundary gets the wrong single-valued conductivity for its
-entire span (the model has no way to represent a boundary that falls
-between two nodes), which can misstate that cell's thermal resistance
-by a large factor -- a *biased effective medium*, correctly integrated,
-rather than a bookkeeping error. Use ``layer_resolution_check`` first
-(no simulation needed) to check whether a layer is resolved at all, and
-``column_energy_budget`` to confirm the interior scheme's own
-conservation is intact regardless.
 
 References
 ----------
@@ -449,44 +451,44 @@ def _true_kc_at(z, planet, custom_layers):
 def layer_resolution_check(profile, n_sub=200):
     """How well the model's grid resolves each custom layer.
 
-    Analysis of :func:`heat1d.grid.spatialGrid`: the grid spacing near
-    the surface, ``dz0 = skin_depth(planet.day, ks/(rhos*cp0)) / m``, is
-    sized from the *background* material alone (``planet.ks``,
-    ``rhos``, ``cp0``) -- it has no awareness of ``custom_layers``.
-    ``apply_custom_layers`` (see :mod:`heat1d.layers`) then assigns a
-    layer's properties only to whichever *discrete nodes* happen to
-    land inside it; it does not insert nodes at the layer's boundaries
-    or otherwise account for a boundary that falls between two nodes.
+    :class:`heat1d.profile.Profile` calls
+    :func:`heat1d.grid.insert_custom_layer_boundaries` to guarantee a
+    grid node at every custom layer's ``z_top``/``z_bottom``, so under
+    ordinary circumstances this reports an exact match (ratio 1.0,
+    ``total_resistance_error`` at floating-point noise) for a layer of
+    any thickness or position. It remains useful as: a fast,
+    no-simulation-needed way to *confirm* that (this is what backs
+    ``Profile``'s automatic warning); a diagnostic for the rare
+    pathological case a layer thinner than that insertion's own merge
+    tolerance, which gets snapped away rather than resolved (see
+    :func:`heat1d.grid.insert_custom_layer_boundaries`); and a way to
+    check a profile built by some other path that bypasses that
+    insertion.
 
-    Since the interior stencil (Eq A15) uses a single nodal
-    conductivity value for the flux across an *entire* inter-nodal
-    segment, any cell whose true material composition is split between
-    a custom layer and its surroundings gets replaced by a
-    homogeneous cell at the wrong (over- or under-) resistance. This
-    function quantifies that mismatch directly: for every grid cell a
-    layer overlaps, it compares the model's resistance
-    (``dz / kc[shallow node]``, exactly what the solver uses) to the
-    cell's *true* resistance (``integral of 1/kc_true(z) dz`` across
-    the cell, from the actual layered material). No time-stepping is
-    involved -- this is purely a property of the grid and the
-    requested layers, and can be checked before running a model at
-    all.
+    Historical note (the bug this module was built to diagnose): before
+    the grid fix, ``apply_custom_layers`` (see :mod:`heat1d.layers`)
+    assigned a layer's properties only to whichever *discrete nodes*
+    happened to land inside it, with no node inserted at the layer's
+    boundaries -- so the interior stencil's single nodal conductivity
+    per inter-nodal segment (Eq A15) could represent an entire cell
+    split between a custom layer and its surroundings as if it were
+    homogeneous, at the wrong (over- or under-) resistance. For every
+    grid cell a layer overlaps, this function compares the model's
+    resistance (``dz / kc[shallow node]``, exactly what the solver
+    uses) to the cell's *true* resistance (``integral of 1/kc_true(z)
+    dz`` across the cell, from the actual layered material) -- which is
+    how the original mismatch (e.g. a 2mm, 25x-lower-conductivity
+    surface veneer smeared across the default grid's ~4.5mm first cell)
+    was found and is now regression-tested.
 
-    A large ratio here (e.g. a 2mm, 25x-lower-conductivity surface
-    veneer against the default grid's ~4.5mm first cell) explains a
-    biased-but-locally-conservative diurnal temperature error even
-    though :func:`column_energy_budget` shows no interior-node energy
-    leak -- the scheme conserves energy exactly for the (wrong)
-    effective medium it ends up representing.
-
-    The per-cell *ratio* pinpoints which cell misrepresents the layer
-    and by how much, but it is not, on its own, a reliable predictor of
-    the net surface-temperature error: a thin cell that straddles the
-    layer boundary can carry a huge ratio (its true resistance is small
-    while the model rounds it entirely into the more resistive
-    material) while contributing little in absolute terms, so the
-    resulting temperature bias vs. grid resolution is *not* generally
-    monotonic. ``total_resistance_error`` -- the sum of
+    The per-cell *ratio* pinpoints which cell misrepresents a layer and
+    by how much, but on an unresolved grid it is not, on its own, a
+    reliable predictor of the net surface-temperature error: a thin
+    cell that straddles a layer boundary can carry a huge ratio (its
+    true resistance is small while the model rounds it entirely into
+    the more resistive material) while contributing little in absolute
+    terms, so the resulting temperature bias vs. grid resolution is
+    *not* generally monotonic. ``total_resistance_error`` -- the sum of
     ``|R_model - R_true|`` [K*m^2/W] over every affected cell -- tracks
     the net bias more reliably and is the recommended single number for
     judging "is this layer resolved well enough".
@@ -536,10 +538,19 @@ def layer_resolution_check(profile, n_sub=200):
             # Does this cell overlap the layer's depth range at all?
             if z1 <= layer.z_top or z0 >= layer.z_bottom:
                 continue
-            z_sub = np.linspace(z0, z1, n_sub + 1)
+            # Midpoint rule, not trapezoidal: DepthLayer's [z_top, z_bottom)
+            # convention is half-open, so a layer boundary landing exactly
+            # on a quadrature point (as it always does at one edge of a
+            # boundary-conforming cell -- see
+            # heat1d.grid.insert_custom_layer_boundaries) would have that
+            # single point evaluate on the wrong side of the discontinuity
+            # under a trapezoidal (edge-inclusive) rule, biasing R_true by
+            # a spurious ~1/(2*n_sub). Interior sample points never land
+            # exactly on a boundary, so this has no such artifact.
+            edges = np.linspace(z0, z1, n_sub + 1)
+            z_sub = 0.5 * (edges[1:] + edges[:-1])
             kc_true = _true_kc_at(z_sub, planet, custom_layers)
-            inv_kc = 1.0 / kc_true
-            R_true = np.sum(0.5 * (inv_kc[1:] + inv_kc[:-1]) * np.diff(z_sub))
+            R_true = np.sum((z1 - z0) / n_sub / kc_true)
             R_model = dz[j] / kc[j]
             ratio = R_model / R_true
             cells.append({

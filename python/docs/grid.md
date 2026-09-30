@@ -60,47 +60,64 @@ depth of about 1 m.
 density and conductivity within a depth range — e.g. a thin, low-
 thermal-inertia veneer on top of a coarser background. The grid above
 is built entirely from the *background* material's properties
-(`planet.ks`, `rhos`, `cp0`); it has no knowledge of any custom layer.
-`apply_custom_layers` then assigns a layer's properties to whichever
-*discrete grid nodes* happen to fall inside it — it does not insert
-nodes at the layer's boundaries, and it does not blend properties for a
-cell that straddles one.
+(`planet.ks`, `rhos`, `cp0`); it has no knowledge of any custom layer
+on its own.
 
-Two consequences follow directly, both worth checking before trusting a
-result:
+That used to matter, because `apply_custom_layers` assigns a layer's
+properties to whichever *discrete grid nodes* happen to fall inside it
+— it does not, by itself, insert nodes at the layer's boundaries or
+blend properties for a cell that straddles one. A layer thinner than
+the local cell size would be misrepresented (its conductivity applied
+across a whole cell several times its true thickness, biasing the
+surface's effective resistance non-monotonically with grid
+refinement), and a layer landing entirely between two nodes would be
+invisible to the simulation regardless of its property contrast.
 
-- **A layer thinner than the local cell size is misrepresented, not
-  rejected.** If only the surface node lands inside the layer, the
-  model applies the layer's conductivity across the *entire* first
-  cell — which can be several times the layer's true thickness,
-  producing an artificially over- or under-insulated surface,
-  depending on how the cell boundary happens to fall relative to the
-  layer. This is not a violation of energy conservation (the scheme
-  still conserves energy exactly for whatever effective medium it ends
-  up using) — it is a biased *representation* of the medium, and the
-  resulting surface-temperature error does not shrink monotonically
-  with grid refinement, since it depends on where node positions
-  happen to land relative to the layer boundary at each resolution.
-- **A layer entirely between two nodes is invisible to the simulation
-  regardless of how it changes `kc`/`rho`.** If neither node bounding a
-  cell falls inside `[z_top, z_bottom)`, `apply_custom_layers` never
-  touches that cell's properties at all.
+`Profile` now closes this gap automatically: before deriving grid
+spacing, cell coefficients, or default properties, it calls
+`heat1d.grid.insert_custom_layer_boundaries` to guarantee a node at
+every custom layer's `z_top` and `z_bottom` (reusing an existing node,
+or merging two nearly-coincident boundaries, when they already fall
+close enough together). Every cell then lies entirely inside or
+entirely outside each layer, so `apply_custom_layers`'s per-node
+assignment gives every cell the *exact* resistance of the material it
+actually contains — for a layer of any thickness or position, at any
+grid coarseness (`config.m`/`config.n`/`config.b`). This does mean a
+custom layer adds one or two extra nodes to the grid; it is otherwise
+a no-op when no custom layers are given.
 
-`heat1d.diagnostics.layer_resolution_check(profile)` quantifies this
-directly and requires no simulation: for every grid cell a custom layer
-overlaps, it compares the model's assumed thermal resistance
-(`dz / kc` at that cell, exactly what the solver uses) to the cell's
-*true* resistance (integrating the actual layered material). A large
-ratio, or a nonzero `total_resistance_error` relative to the layer's
-own resistance, means the grid needs refining — raise `config.m` (and
-possibly `config.n`) until the near-surface cell size is well below the
-thinnest custom layer. `Profile` emits a `UserWarning` automatically
-when this check finds a layer resolved to worse than 50% of its own
-resistance.
+The one case this cannot fix is a layer thinner than its own merge
+tolerance (a small fraction of the total grid depth) — it gets snapped
+away as a near-duplicate node rather than resolved. `Profile` emits a
+`UserWarning` automatically should this (or any other resolution
+shortfall) occur.
 
+`heat1d.diagnostics.layer_resolution_check(profile)` is the check this
+warning is built on, and can be run directly with no simulation needed:
+for every grid cell a custom layer overlaps, it compares the model's
+assumed thermal resistance (`dz / kc` at that cell, exactly what the
+solver uses) to the cell's *true* resistance (integrating the actual
+layered material) — reporting `ratio = 1.0` and
+`total_resistance_error ≈ 0` in the ordinary case.
 `heat1d.diagnostics.column_energy_budget(model)` complements this with
 a time-resolved, per-layer flux-divergence probe on a completed run,
-useful for confirming that a poorly-resolved layer is producing a
-representation bias rather than an actual solver defect (see that
-module's docstring for the full picture, including a known, unrelated
-baseline residual at the node nearest the surface).
+confirming the interior scheme's own energy conservation is intact
+independent of grid resolution (see that module's docstring for the
+full picture, including a known, unrelated baseline residual at the
+node nearest the surface).
+
+**What this fix does not remove**: an exactly-represented layer still
+needs *some* surrounding resolution to capture the diurnal transient
+across a sharp property contrast accurately — this is ordinary
+finite-difference truncation error, present (at a much smaller scale)
+even for a smooth homogeneous profile, not something specific to custom
+layers. For a 2mm, 25x-lower-conductivity surface veneer on Europa, the
+default `m=10` still gives surface temperatures several K off from a
+converged answer, improving roughly monotonically and converging to
+<0.1K by `m~100`. Where the pre-fix behavior needed `m~400-800` *and*
+converged non-monotonically (grid refinement could occasionally make
+things worse, depending on where a node happened to land relative to
+the layer boundary), the fixed grid converges smoothly and an order of
+magnitude faster — but a very thin, sharply-contrasting layer still
+benefits from checking a couple of `m` values against each other before
+trusting the result.

@@ -12,7 +12,7 @@ from . import planets
 
 from .boundary import botTemp, surfTemp
 from .config import Configurator, R350
-from .grid import skinDepth, spatialGrid
+from .grid import insert_custom_layer_boundaries, skinDepth, spatialGrid
 from .layers import apply_custom_layers
 from .properties import T_eq, heatCapacity, thermCond
 from .solvers import solve_crank_nicolson, solve_explicit, solve_implicit
@@ -44,7 +44,18 @@ class Profile(object):
 
         self.chi = config.chi
         self.R350 = R350(self.chi)
+
+        # custom_layers is resolved before the grid so its boundaries can
+        # be inserted as nodes: otherwise a boundary landing strictly
+        # inside a cell would have its properties assigned to whichever
+        # single node the cell's flux stencil uses (Eq A15), smearing the
+        # layer's true extent over that whole cell -- or, if the layer
+        # touches no node at all, apply_custom_layers would miss it
+        # completely. See heat1d.grid.insert_custom_layer_boundaries.
+        self.custom_layers = custom_layers or []
         self.z = spatialGrid(skinDepth(planet.day, kappa), config.m, config.n, config.b)
+        if self.custom_layers:
+            self.z = insert_custom_layer_boundaries(self.z, self.custom_layers)
         self.nlayers = np.size(self.z)  # number of model layers
         self.dz = np.diff(self.z)
         self.d3z = self.dz[1:] * self.dz[0:-1] * (self.dz[1:] + self.dz[0:-1])
@@ -60,8 +71,8 @@ class Profile(object):
             self.kc = np.full_like(self.z, kd)
             self.rho = np.full_like(self.z, rhod)
 
-        # Apply custom layers if provided
-        self.custom_layers = custom_layers or []
+        # Apply custom layers, now that their boundaries are guaranteed to
+        # coincide with grid nodes.
         if self.custom_layers:
             self._chi_array = np.full(self.nlayers, self.chi)
             apply_custom_layers(self.z, self.kc, self.rho,
@@ -83,16 +94,18 @@ class Profile(object):
         self.update_properties()
 
     def _check_layer_resolution(self):
-        """Warn when the grid cannot adequately resolve a custom layer.
+        """Warn on the rare layer insert_custom_layer_boundaries cannot fix.
 
-        The grid (:func:`heat1d.grid.spatialGrid`) is sized from the
-        *background* material's skin depth alone, with no knowledge of
-        ``custom_layers``; a layer thinner than the resulting cell size
-        gets its properties assigned to whichever single grid cell(s)
-        happen to overlap it (see :mod:`heat1d.layers`), which can
-        substantially misrepresent the layer's true thermal resistance.
-        See :func:`heat1d.diagnostics.layer_resolution_check` for the
-        full per-cell analysis this warning is based on.
+        ``self.z`` above already had a node inserted at every custom
+        layer's ``z_top``/``z_bottom`` (see
+        :func:`heat1d.grid.insert_custom_layer_boundaries`), which
+        normally makes a layer's resistance exact regardless of grid
+        coarseness. This is a safety net for the case that insertion
+        cannot fix: a layer thinner than its own merge tolerance (a
+        tiny fraction of the total grid depth) gets snapped away rather
+        than resolved. See
+        :func:`heat1d.diagnostics.layer_resolution_check` for the full
+        per-cell analysis this warning is based on.
         """
         from .diagnostics import layer_resolution_check
 

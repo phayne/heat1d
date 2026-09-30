@@ -238,66 +238,50 @@ class TestLayerResolutionCheck:
         p = Profile(planet=moon, lat=0.0, config=default_config)
         assert diag.layer_resolution_check(p) == []
 
-    def test_default_grid_misresolves_thin_europa_layer(self, europa_fluffy_layer):
-        """At the default m=10, the layer (2mm) is thinner than the
-        first grid cell (~4.6mm): the model applies the fluffy
-        conductivity across the WHOLE cell, over-stating its
-        resistance by roughly 2x. This pins the specific regression
-        this module was built to catch."""
+    def test_default_grid_exactly_resolves_thin_europa_layer(self, europa_fluffy_layer):
+        """Even at the default m=10, where the layer (2mm) is thinner
+        than the background grid's first cell (~4.6mm), the grid now
+        inserts a node exactly at the layer's bottom edge (see
+        heat1d.grid.insert_custom_layer_boundaries), so the cell
+        spanning the layer matches its true thickness and conductivity
+        exactly. This pins the fix for the regression this module was
+        built to catch (previously ratio ~2.19, a ~2x over-estimate)."""
         europa, layer = europa_fluffy_layer
         cfg = Configurator(m=10)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # the resolution warning itself
-            p = Profile(planet=europa, lat=0.0, config=cfg, custom_layers=[layer])
+        p = Profile(planet=europa, lat=0.0, config=cfg, custom_layers=[layer])
         result = diag.layer_resolution_check(p)[0]
         assert result["label"] == "fluffy"
         assert result["n_nodes_inside"] == 1  # only the surface node itself
         assert len(result["cells"]) == 1
-        assert result["cells"][0]["ratio"] == pytest.approx(2.19, abs=0.05)
-        assert result["max_ratio_deviation"] > 1.5
-        assert result["signed_resistance_error"] > 0  # over-insulating
+        cell = result["cells"][0]
+        assert cell["cell"][2] == pytest.approx(layer.z_bottom)  # node at the edge
+        assert cell["ratio"] == pytest.approx(1.0, abs=1e-9)
+        assert result["max_ratio_deviation"] == pytest.approx(1.0, abs=1e-9)
+        assert result["total_resistance_error"] < 1e-9
 
-    def test_fine_grid_resolves_the_layer(self, europa_fluffy_layer):
-        """A grid fine enough to place many nodes inside the 2mm layer
-        should reproduce its true resistance almost exactly."""
+    def test_resolution_is_exact_regardless_of_grid_coarseness(self, europa_fluffy_layer):
+        """total_resistance_error is ~0 at every m, not just a fine
+        grid -- boundary-conforming nodes make a uniform-property
+        layer's resistance exact independent of resolution elsewhere,
+        unlike the raw per-cell ratio picture that mattered before the
+        grid fix (a thin boundary-straddling cell used to show a large
+        ratio while contributing little in absolute terms)."""
         europa, layer = europa_fluffy_layer
-        cfg = Configurator(m=400, n=20)
-        p = Profile(planet=europa, lat=0.0, config=cfg, custom_layers=[layer])
-        result = diag.layer_resolution_check(p)[0]
-        assert result["n_nodes_inside"] >= 8
-        assert result["max_ratio_deviation"] < 1.2
-        assert result["total_resistance_error"] < 0.2
-
-    def test_resolution_improves_with_grid_refinement(self, europa_fluffy_layer):
-        """total_resistance_error (the recommended summary metric) must
-        shrink as the grid refines around the layer -- unlike the raw
-        per-cell ratio, which is not monotonic (a thin boundary-
-        straddling cell can show a large ratio while contributing
-        little in absolute terms)."""
-        europa, layer = europa_fluffy_layer
-        errors = []
         for m in (10, 100, 800):
             cfg = Configurator(m=m, n=20)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                p = Profile(planet=europa, lat=0.0, config=cfg,
-                           custom_layers=[layer])
-            errors.append(
-                diag.layer_resolution_check(p)[0]["total_resistance_error"]
-            )
-        assert errors[0] > errors[1] > errors[2]
+            p = Profile(planet=europa, lat=0.0, config=cfg,
+                       custom_layers=[layer])
+            result = diag.layer_resolution_check(p)[0]
+            assert result["total_resistance_error"] < 1e-9
+            assert result["max_ratio_deviation"] == pytest.approx(1.0, abs=1e-9)
 
-    def test_buried_layer_between_nodes_invisible_to_apply_custom_layers(
-        self, moon, default_config,
-    ):
+    def test_buried_layer_between_nodes_now_visible(self, moon, default_config):
         """A related failure mode, distinct from the reported one: a
         layer that falls strictly *between* two grid nodes -- touching
-        neither -- is completely invisible to apply_custom_layers
-        (heat1d.layers), which only overrides properties AT nodes.
-        Unlike that node-based check, layer_resolution_check integrates
-        the true material over each grid CELL, so it still reports the
-        (here, large) resistance error the model silently drops on the
-        floor."""
+        neither -- used to be completely invisible to
+        apply_custom_layers (heat1d.layers), which only overrides
+        properties AT nodes. The grid fix inserts nodes at its edges
+        too, so it is now applied exactly like any other layer."""
         # Build an unmodified profile first to find a gap between two
         # adjacent nodes, then place a physically significant layer
         # (same contrast as the Europa case) strictly inside that gap.
@@ -309,21 +293,20 @@ class TestLayerResolutionCheck:
         layer = DepthLayer(z_top=z_top, z_bottom=z_bottom, rho=moon.rhos,
                            kc=kc_fluffy, chi=2.7, label="buried")
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # this case DOES warn; not the point here
-            p = Profile(planet=moon, lat=0.0, config=default_config,
-                       custom_layers=[layer])
+        p = Profile(planet=moon, lat=0.0, config=default_config,
+                   custom_layers=[layer])
 
-        # apply_custom_layers never touched any node: kc is pure background.
-        kc_background = compute_default_properties(p.z, moon)[0]
-        np.testing.assert_allclose(p.kc, kc_background)
+        # apply_custom_layers now sees it: two new nodes bound the layer,
+        # and the node(s) between them carry its (not the background's)
+        # conductivity.
+        assert p.nlayers == probe_profile.nlayers + 2
+        in_layer = layer.contains(p.z)
+        assert in_layer.sum() >= 1
+        np.testing.assert_allclose(p.kc[in_layer], kc_fluffy)
 
-        # ...but layer_resolution_check still catches the resistance
-        # error the model is actually (silently) carrying in cell 5.
         result = diag.layer_resolution_check(p)[0]
-        assert len(result["cells"]) == 1
-        assert result["cells"][0]["cell"][0] == 5
-        assert result["max_ratio_deviation"] > 1.3
+        assert result["total_resistance_error"] < 1e-9
+        assert result["max_ratio_deviation"] == pytest.approx(1.0, abs=1e-9)
 
 
 # ---------------------------------------------------------------------------
@@ -331,19 +314,38 @@ class TestLayerResolutionCheck:
 # ---------------------------------------------------------------------------
 
 class TestLayerResolutionWarning:
+    """With the grid fix (insert_custom_layer_boundaries), an ordinary
+    custom layer -- of any thickness, at any depth -- is now resolved
+    exactly, so this warning should essentially never fire in normal
+    use. It remains as a safety net for a layer thinner than the
+    merge tolerance in insert_custom_layer_boundaries (a small fraction
+    of the total grid depth): such a layer gets snapped away rather
+    than resolved, and should still be flagged."""
 
-    def test_warns_for_unresolved_layer(self, europa_fluffy_layer):
+    def test_no_warning_for_ordinary_thin_layer(self, europa_fluffy_layer):
+        """The reported case (2mm on Europa) at the coarsest resolution
+        used to warn; it is now resolved exactly and must not warn."""
         europa, layer = europa_fluffy_layer
         cfg = Configurator(m=10)
-        with pytest.warns(UserWarning, match="not well resolved"):
-            Profile(planet=europa, lat=0.0, config=cfg, custom_layers=[layer])
-
-    def test_no_warning_for_resolved_layer(self, europa_fluffy_layer):
-        europa, layer = europa_fluffy_layer
-        cfg = Configurator(m=400, n=20)
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             Profile(planet=europa, lat=0.0, config=cfg, custom_layers=[layer])
+
+    def test_warns_for_layer_thinner_than_merge_tolerance(self, europa_fluffy_layer):
+        """A layer thinner than insert_custom_layer_boundaries' snap
+        tolerance (a tiny fraction of the total grid depth) collapses
+        to a single point and is effectively dropped -- this remains a
+        real, if extreme, gap the warning should still catch."""
+        europa, layer = europa_fluffy_layer
+        cfg = Configurator(m=10)
+        z_max = Profile(planet=europa, lat=0.0, config=cfg).z[-1]
+        eps = 1e-9 * z_max  # far below the 1e-6 * z_max merge tolerance
+        vanishing = DepthLayer(z_top=0.01, z_bottom=0.01 + eps,
+                               rho=layer.rho, kc=layer.kc, chi=layer.chi,
+                               label="vanishing")
+        with pytest.warns(UserWarning, match="not well resolved"):
+            Profile(planet=europa, lat=0.0, config=cfg,
+                   custom_layers=[vanishing])
 
     def test_no_warning_without_custom_layers(self, moon, default_config):
         with warnings.catch_warnings():
