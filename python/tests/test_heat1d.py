@@ -29,3 +29,21 @@ def test_basic_model_run():
     # Surface temperature should be physically reasonable
     assert m.T[:, 0].max() > 300
     assert m.T[:, 0].min() > 50
+
+
+def test_planet_missing_properties_raises():
+    """Model rejects a body lacking thermophysical properties."""
+    with pytest.raises(ValueError, match="missing properties"):
+        heat1d.Model(planet=heat1d.planets.Jupiter)
+
+
+def test_mercury_hot_pole():
+    """Mercury runs and reaches hot-pole noon temperatures (~700 K)."""
+    import numpy as np
+
+    config = heat1d.Configurator(solver="fourier-matrix")
+    m = heat1d.Model(planet=heat1d.planets.Mercury, lat=0, lon=0,
+                     ndays=1, config=config)
+    m.run()
+    assert 650 < m.T[:, 0].max() < 750
+    assert 80 < m.T[:, 0].min() < 150

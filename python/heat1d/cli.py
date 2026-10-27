@@ -42,6 +42,9 @@ def _resolve_planet(name, overrides):
                     if not a.startswith("_") and hasattr(getattr(planets_pkg, a), "day")
                 )
             )
+        # Copy so overrides don't modify the shared module-level object
+        planet = copy.copy(planet)
+    rAU_orig, S_orig = planet.rAU, planet.S
     for key, val in overrides.items():
         if hasattr(planet, key):
             setattr(planet, key, val)
@@ -49,6 +52,12 @@ def _resolve_planet(name, overrides):
             raise click.ClickException(
                 f"Planet '{name}' has no attribute '{key}'"
             )
+    # planet.S is the solar flux at distance rAU, so moving the body
+    # rescales it (inverse square) unless S was given explicitly
+    if "rAU" in overrides:
+        planet.rsm = planet.rAU * planets_pkg.AU
+        if "S" not in overrides and S_orig is not None and rAU_orig:
+            planet.S = S_orig * (rAU_orig / planet.rAU) ** 2
     return planet
 
 
@@ -248,8 +257,8 @@ def main(
     if isinstance(planet_cfg, dict):
         # Copy overridable planet properties from YAML
         for key in ("albedo", "emissivity", "ks", "kd", "rhos", "rhod",
-                    "H", "cp0", "Qb", "rAU", "day", "year",
-                    "eccentricity", "obliquity"):
+                    "H", "cp0", "cpCoeff", "Qb", "S", "rAU", "day", "year",
+                    "eccentricity", "obliquity", "Lp"):
             if key in planet_cfg:
                 planet_overrides[key] = planet_cfg[key]
         # Triaxial shape override
@@ -411,10 +420,6 @@ def main(
         # The Horizons flux already captures the real orbital geometry.
         r0 = spice_meta.get("initial_range_au")
         if r0 is not None:
-            # Copy first: _resolve_planet returns the shared module-level
-            # planet object for named planets, which must not be mutated.
-            import copy as _copy
-            planet = _copy.copy(planet)
             planet.S = 1361.0 / (r0 ** 2)
             planet.rAU = r0
             planet.eccentricity = 0.0
@@ -516,14 +521,17 @@ def main(
         if use_spice and flux_series is not None:
             flux_noon_idx = spice_meta.get("noon_idx")
             flux_lt0_hr = spice_meta.get("lt0_hr")
-        model = Model(planet=planet, lat=lat_rad, lon=lon_rad, ndays=run_ndays,
-                      config=config, flux_series=flux_series, flux_dt=flux_dt,
-                      psr_d_D=psr_d_D,
-                      slope=np.deg2rad(run_slope),
-                      slope_az=np.deg2rad(run_slope_az),
-                      ground_heating=ground_heating if run_slope > 0 else None,
-                      flux_noon_idx=flux_noon_idx,
-                      flux_lt0_hr=flux_lt0_hr)
+        try:
+            model = Model(planet=planet, lat=lat_rad, lon=lon_rad, ndays=run_ndays,
+                          config=config, flux_series=flux_series, flux_dt=flux_dt,
+                          psr_d_D=psr_d_D,
+                          slope=np.deg2rad(run_slope),
+                          slope_az=np.deg2rad(run_slope_az),
+                          ground_heating=ground_heating if run_slope > 0 else None,
+                          flux_noon_idx=flux_noon_idx,
+                          flux_lt0_hr=flux_lt0_hr)
+        except ValueError as exc:
+            raise click.ClickException(str(exc))
 
     if not quiet:
         click.echo(f"Running model (backend={backend})...")
