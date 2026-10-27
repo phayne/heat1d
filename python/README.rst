@@ -3,12 +3,6 @@ heat1d
 ======
 
 
-.. image:: https://img.shields.io/pypi/v/heat1d.svg
-        :target: https://pypi.python.org/pypi/heat1d
-
-.. image:: https://img.shields.io/travis/phayne/heat1d.svg
-        :target: https://travis-ci.org/phayne/heat1d
-
 .. image:: https://readthedocs.org/projects/heat1d/badge/?version=latest
         :target: https://heat1d.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
@@ -35,9 +29,17 @@ Features
 Installation
 ------------
 
+The ``heat1d`` release on PyPI is obsolete and no longer updated. Install the
+current version from GitHub (requires Python 3.9 or newer):
+
 .. code-block:: bash
 
-   pip install heat1d
+   pip install "heat1d @ git+https://github.com/phayne/heat1d.git#subdirectory=python"
+
+Add the ``[gui]`` extra (``"heat1d[gui] @ git+..."``) for the graphical user
+interface. See the `installation docs`_ for development installs.
+
+.. _`installation docs`: https://heat1d.readthedocs.io/en/latest/installation.html
 
 
 Credits
