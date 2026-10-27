@@ -98,7 +98,12 @@ def _resolve_planet(name, overrides):
 @click.option("--use-spice", is_flag=True,
               help="Use JPL Horizons ephemeris for illumination (requires network).")
 @click.option("--lon", type=float, default=0.0,
-              help="Longitude [degrees east]. Used with --use-spice. Default: 0.")
+              help="Longitude [degrees east]. Without --use-spice, 0 E is taken "
+                   "to face the Sun at perihelion. Default: 0.")
+@click.option("--true-anomaly", "true_anomaly", type=float, default=None,
+              help="Orbital true anomaly at local noon [degrees, 0 = perihelion]. "
+                   "Sets the orbital position (season) without an ephemeris; "
+                   "cannot be combined with --lon or --use-spice.")
 @click.option("--start-time", "start_time", type=str, default=None,
               help="UTC start time, e.g. '2024-06-01 12:00'. Required with --use-spice.")
 @click.option("--stop-time", "stop_time", type=str, default=None,
@@ -142,6 +147,7 @@ def main(
     flux_file,
     use_spice,
     lon,
+    true_anomaly,
     start_time,
     stop_time,
     body_id,
@@ -483,6 +489,26 @@ def main(
                     err=True,
                 )
 
+    # Orbital position of noon (CLI > YAML); longitude determines it
+    # unless given explicitly, and an ephemeris fixes it outright
+    if true_anomaly is None and yaml_data.get("true_anomaly") is not None:
+        true_anomaly = float(yaml_data["true_anomaly"])
+    if true_anomaly is not None:
+        if use_spice:
+            raise click.ClickException(
+                "--true-anomaly cannot be combined with --use-spice: the "
+                "ephemeris determines the orbital position"
+            )
+        if lon != 0.0:
+            raise click.ClickException(
+                "--true-anomaly and --lon are mutually exclusive: without an "
+                "ephemeris, longitude determines the orbital position of noon"
+            )
+        if backend == "c":
+            raise click.ClickException(
+                "--true-anomaly is not supported by the C backend"
+            )
+
     # --- Run model ---
     lat_rad = np.deg2rad(run_lat)
 
@@ -529,7 +555,9 @@ def main(
                           slope_az=np.deg2rad(run_slope_az),
                           ground_heating=ground_heating if run_slope > 0 else None,
                           flux_noon_idx=flux_noon_idx,
-                          flux_lt0_hr=flux_lt0_hr)
+                          flux_lt0_hr=flux_lt0_hr,
+                          true_anomaly=(np.deg2rad(true_anomaly)
+                                        if true_anomaly is not None else None))
         except ValueError as exc:
             raise click.ClickException(str(exc))
 

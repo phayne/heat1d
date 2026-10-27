@@ -253,3 +253,17 @@ class TestCLIPlanets:
             ])
             assert result.exit_code == 0, result.output
             assert "T_max" in result.output
+
+    def test_true_anomaly_conflicts(self, runner):
+        """--true-anomaly is rejected with --lon or --use-spice."""
+        result = runner.invoke(main, [
+            "--lon", "30", "--true-anomaly", "180", "--no-plot"
+        ])
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output
+        result = runner.invoke(main, [
+            "--use-spice", "--start-time", "2024-06-15 12:00",
+            "--true-anomaly", "180", "--no-plot"
+        ])
+        assert result.exit_code != 0
+        assert "--use-spice" in result.output

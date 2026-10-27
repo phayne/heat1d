@@ -503,7 +503,8 @@ def compute_rectification_exact(T_surf_hat, depth_ratios, flux_ratios,
     return J_pump, k_mean_eff
 
 
-def _diurnal_geometry(planet, lat, nsteps, dec=0, r=None, lon=0.0):
+def _diurnal_geometry(planet, lat, nsteps, dec=0, r=None, lon=0.0,
+                      true_anomaly=None):
     """Solar geometry on a uniform grid over one diurnal cycle.
 
     For bodies with significant eccentricity (e > 0.05), computes the
@@ -525,7 +526,9 @@ def _diurnal_geometry(planet, lat, nsteps, dec=0, r=None, lon=0.0):
     r : float or None
         Heliocentric distance [AU] (circular branch only).
     lon : float
-        Observer longitude [rad].
+        Observer east longitude [rad] (see orbits.noonMeanAnomaly).
+    true_anomaly : float or None
+        True anomaly [rad] at local noon; overrides ``lon``.
 
     Returns
     -------
@@ -547,12 +550,13 @@ def _diurnal_geometry(planet, lat, nsteps, dec=0, r=None, lon=0.0):
     if ecc > 0.05:
         # General eccentric orbit: compute full trajectory
         P_sid = orbits.siderealPeriod(planet.day, planet.year)
-        M0 = orbits.meanFromTrue(lon, ecc)
+        M0 = orbits.noonMeanAnomaly(lon, planet.day, planet.year, ecc,
+                                    true_anomaly)
         M = M0 + orbits.TWOPI * t / planet.year
         nu = orbits.trueFromMean(M, ecc)
 
-        # Hour angle from general formula
-        h = orbits.TWOPI * t / P_sid + lon - nu
+        # Hour angle from general formula, zero (local noon) at t = 0
+        h = orbits.TWOPI * t / P_sid + nu[0] - nu
 
         # Time-varying heliocentric distance
         a = planet.rAU
@@ -574,7 +578,7 @@ def _diurnal_geometry(planet, lat, nsteps, dec=0, r=None, lon=0.0):
 
 
 def precompute_diurnal_flux(planet, lat, nsteps, dec=0, r=None, lon=0.0,
-                            slope=0.0, slope_az=0.0):
+                            slope=0.0, slope_az=0.0, true_anomaly=None):
     """Pre-compute absorbed surface flux for one diurnal cycle.
 
     Uses the existing insolation code (orbit geometry, angle-dependent albedo).
@@ -598,11 +602,13 @@ def precompute_diurnal_flux(planet, lat, nsteps, dec=0, r=None, lon=0.0,
         Heliocentric distance [AU]. Default: planet.rAU. Used only for
         circular orbit approximation (ecc <= 0.05).
     lon : float
-        Observer longitude [rad]. Default 0.
+        Observer east longitude [rad]. Default 0.
     slope : float
         Surface slope [rad]. Default 0 (flat).
     slope_az : float
         Slope azimuth [rad], clockwise from north. Default 0.
+    true_anomaly : float or None
+        True anomaly [rad] at local noon; overrides ``lon``. Default None.
 
     Returns
     -------
@@ -618,7 +624,8 @@ def precompute_diurnal_flux(planet, lat, nsteps, dec=0, r=None, lon=0.0,
     b_coef = planet.albedoCoef[1]
 
     cos_z, r_t, dt, h, dec_t = _diurnal_geometry(
-        planet, lat, nsteps, dec=dec, r=r, lon=lon
+        planet, lat, nsteps, dec=dec, r=r, lon=lon,
+        true_anomaly=true_anomaly,
     )
 
     if slope > 0.0:

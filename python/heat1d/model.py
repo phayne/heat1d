@@ -51,14 +51,24 @@ class Model(object):
     def __init__(self, planet=planets.Moon, lat=0, lon=0, ndays=1, config=Configurator(),
                  flux_series=None, flux_dt=None, custom_layers=None, psr_d_D=None,
                  slope=0.0, slope_az=0.0, ground_heating=None, flux_noon_idx=None,
-                 flux_lt0_hr=None):
+                 flux_lt0_hr=None, true_anomaly=None):
 
         _check_planet(planet, config)
+        # Without an ephemeris, longitude fixes the orbital position of
+        # local noon (see orbits.noonMeanAnomaly); true_anomaly sets it
+        # directly instead, so the two cannot both be given
+        if true_anomaly is not None and lon != 0:
+            raise ValueError(
+                "lon and true_anomaly are mutually exclusive: without an "
+                "ephemeris, longitude determines the orbital position of "
+                "local noon"
+            )
 
         # Initialize
         self.planet = planet
         self.lat = lat
-        self.lon = lon  # observer longitude [rad]
+        self.lon = lon  # observer east longitude [rad]
+        self.true_anomaly = true_anomaly  # true anomaly at local noon [rad]
 
         # Sloped surface (Braun & Mitchell 1983 geometry; see terrain.py)
         # slope: dip from horizontal [rad]; slope_az: downslope azimuth
@@ -96,8 +106,9 @@ class Model(object):
         # Orbital mechanics: track mean anomaly for exact Kepler solution
         self.P_sid = orbits.siderealPeriod(planet.day, planet.year)
         # Starting mean anomaly: choose so that h(0) = 0 (local noon)
-        # at the observer's longitude. This requires nu(M0) = lon.
-        self.M0 = float(orbits.meanFromTrue(lon, planet.eccentricity))
+        # at the observer's longitude
+        self.M0 = orbits.noonMeanAnomaly(lon, planet.day, planet.year,
+                                         planet.eccentricity, true_anomaly)
         self.M = self.M0  # mean anomaly [rad], advanced uniformly
         self.nu = float(orbits.trueFromMean(self.M, planet.eccentricity))
         # Rotation phase reference: nu at t=0 of the current phase.
@@ -338,6 +349,7 @@ class Model(object):
             flux, dt = precompute_diurnal_flux(
                 self.planet, self.lat, nsteps, dec=self.dec, r=self.r,
                 lon=self.lon, slope=self.slope, slope_az=self.slope_az,
+                true_anomaly=self.true_anomaly,
             )
             if self._Q_ind is not None:
                 flux = flux + self._ground_heating_flux(np.arange(nsteps) * dt)
@@ -398,6 +410,7 @@ class Model(object):
         flux, dt = precompute_diurnal_flux(
             self.planet, self.lat, nsteps, dec=self.dec, r=self.r,
             lon=self.lon, slope=self.slope, slope_az=self.slope_az,
+            true_anomaly=self.true_anomaly,
         )
         if self._Q_ind is not None:
             flux = flux + self._ground_heating_flux(np.arange(nsteps) * dt)
@@ -657,7 +670,7 @@ class Model(object):
         companion = Model(
             planet=self.planet, lat=self.lat, lon=self.lon, ndays=1,
             config=cfg, custom_layers=self._custom_layers,
-            slope=0.0, ground_heating=False,
+            slope=0.0, ground_heating=False, true_anomaly=self.true_anomaly,
         )
         companion.run()
 
@@ -673,7 +686,7 @@ class Model(object):
         # Flat-terrain illumination geometry on the same grid
         cos_z, r_t, _dt, _h, _dec = _diurnal_geometry(
             self.planet, self.lat, nsteps, dec=self.dec, r=self.r,
-            lon=self.lon,
+            lon=self.lon, true_anomaly=self.true_anomaly,
         )
         self._Q_ind = terrain.indirect_flux_series(
             self.planet, self.slope, T_flat, cos_z, r_t
