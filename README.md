@@ -321,7 +321,7 @@ directory. See [c/README.md](c/README.md) for complete documentation.
 
 `heat1d` solves the 1-D heat equation in porous planetary regolith:
 
-$$\rho \, c_p \frac{\partial T}{\partial t} = \frac{\partial}{\partial z} \left( K \frac{\partial T}{\partial z} \right)$$
+$$\rho c_p \frac{\partial T}{\partial t} = \frac{\partial}{\partial z} \left( K \frac{\partial T}{\partial z} \right)$$
 
 with the following depth- and temperature-dependent material properties from Hayne et al. (2017):
 

@@ -177,10 +177,10 @@ bottom of a homogeneous layer of thickness $d$ are related by a 2×2 transmissio
 matrix (analogous to electrical transmission lines):
 
 $$
-\begin{pmatrix} \hat{T} \\ \hat{q} \end{pmatrix}_{\text{top}} =
-\begin{pmatrix} \cosh(\gamma d) & \frac{\sinh(\gamma d)}{K\gamma} \\
+\begin{pmatrix} \hat{T} \cr \hat{q} \end{pmatrix}_{\text{top}} =
+\begin{pmatrix} \cosh(\gamma d) & \frac{\sinh(\gamma d)}{K\gamma} \cr
 K\gamma \sinh(\gamma d) & \cosh(\gamma d) \end{pmatrix}
-\begin{pmatrix} \hat{T} \\ \hat{q} \end{pmatrix}_{\text{bottom}}
+\begin{pmatrix} \hat{T} \cr \hat{q} \end{pmatrix}_{\text{bottom}}
 $$
 
 where $\gamma = \sqrt{i\omega / \kappa}$ is the complex thermal wavenumber
@@ -210,7 +210,7 @@ $$
 \hat{q}_{\text{surf}} = P_{10} \hat{T}_{\text{bot}}
 $$
 
-giving $Z$ = $P_{00}$/$P_{10}$.
+giving $Z = P_{00}/P_{10}$.
 
 ### Nonlinear Surface Radiation
 
@@ -262,9 +262,7 @@ The solver captures this through an outer iteration loop:
 3. **Compute rectification flux** $J_{\text{pump}}(z) = \langle K(T) \partial \tilde{T}/\partial z \rangle$ from the time-domain reconstruction of $T(z,t)$ and the exact nonlinear $K(T)$, where $\tilde{T}(z,t) = T(z,t) - \bar{T}(z)$ is the AC (oscillatory) component and $\langle \cdot \rangle$ denotes the time average over one period
 4. **Update the equilibrium profile** by integrating
 
-   $$
-   d\bar{T}/dz = (Q_b - J_{\text{pump}}(z)) / K_{\text{eff}}(z)
-   $$
+   $$d\bar{T}/dz = (Q_b - J_{\text{pump}}(z)) / K_{\text{eff}}(z)$$
 
    downward from the surface using 4th-order Runge-Kutta, where $K_{\text{eff}}(z) = \langle K(T(z,t)) \rangle$ is the exact time-averaged conductivity computed from the full reconstructed $T(z,t)$
 5. **Repeat** until the mean surface temperature converges (typically 3--5 outer iterations)
