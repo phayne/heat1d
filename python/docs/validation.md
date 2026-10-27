@@ -112,7 +112,7 @@ equator, mare albedo for Apollo sites, *H* = 0.06 m), all 8 validation checks
 pass. The Apollo checks use a finer grid (m=20, b=30) and longer equilibration
 (25 orbits) to ensure the 0.83 m subsurface temperature is well converged.
 All validation runs place local noon where the Sun–Moon distance equals the
-semi-major axis (1 AU, true anomaly $\nu = \arccos(-e)$), as in Hayne et al.
+semi-major axis, 1 AU (at true anomaly $\nu$ where $\cos\nu = -e$), as in Hayne et al.
 (2017); the model default (`lon=0`) instead puts noon at Earth's perihelion
 (0.983 AU), which raises the peak temperature by ~3 K. Explicit solver:
 

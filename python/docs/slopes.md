@@ -29,7 +29,7 @@ latitude, declination, and hour angle), the cosine of the local
 incidence angle on the tilted surface is
 
 $$
-\mu \;=\; \cos z \cos s \;+\; \sin z \sin s \cos(A_\odot - \gamma),
+\mu = \cos z \cos s + \sin z \sin s \cos(A_\odot - \gamma),
 $$
 
 subject to two shadowing conditions:
@@ -42,8 +42,8 @@ subject to two shadowing conditions:
 The absorbed direct flux is
 
 $$
-Q_\mathrm{dir} = \bigl[1 - A(i_\mathrm{loc})\bigr]\,
-\frac{S}{(r/r_\mathrm{AU})^{2}}\, \mu,
+Q_\mathrm{dir} = \bigl[1 - A(i_\mathrm{loc})\bigr]
+\frac{S}{(r/r_\mathrm{AU})^{2}} \mu,
 \qquad i_\mathrm{loc} = \arccos\mu,
 $$
 
@@ -84,10 +84,10 @@ recomputes the flat-terrain illumination. The indirect flux added to
 the slope is the periodic series
 
 $$
-Q_\mathrm{ind}(t) = \sin^2(s/2)\,\Bigl[
-\varepsilon^2 \sigma T_\mathrm{flat}^4(t)
-\;+\; (1 - A_0)\, A(\theta(t))\, \frac{S}{(r/r_\mathrm{AU})^2}\,
-\max(\cos\theta(t),\,0)
+Q_\mathrm{ind}(t) = \sin^2(s/2) \Bigl[
+\varepsilon^2 \sigma T_\mathrm{flat}^4(t) +
+(1 - A_0) A(\theta(t)) \frac{S}{(r/r_\mathrm{AU})^2}
+\max(\cos\theta(t), 0)
 \Bigr]
 $$
 
@@ -111,8 +111,8 @@ implemented in the Python and C backends.
 - **Infinite flat plane**: the surroundings are horizontal and extend
   to the horizon; local topography beyond the single slope is not
   modeled.
-- **One-way coupling**: the slope does not heat the flat terrain back
-  (second order in $\sin^2(s/2)$).
+- **One-way coupling**: the slope does not heat the flat terrain back,
+  an effect of second order in $\sin^2(s/2)$.
 - **Single-cycle periodicity**: one equilibrated diurnal cycle is
   reused for all days — exact for circular orbits, and the same
   approximation the fourier-matrix equilibration makes for the direct

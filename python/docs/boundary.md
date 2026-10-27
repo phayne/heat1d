@@ -238,7 +238,7 @@ The three factors have clear physical meanings:
 
 - $S_0 \sin e_0 / r^2$: solar flux intercepted by the crater opening (projected area)
 - $f (1 - A) / (1 - Af)$: fraction absorbed by the cavity after multiple wall reflections
-- $\varepsilon + A(1 - f)$: partition between thermal re-emission ($\varepsilon$) reaching the floor and reflected sunlight escaping through the opening ($A(1-f)$)
+- $\varepsilon + A(1 - f)$: partition between thermal re-emission ($\varepsilon$) reaching the floor and reflected sunlight escaping through the opening, $A(1-f)$
 
 At night ($\sin e_0 = 0$), $Q_{\text{psr}} = 0$ and the crater floor cools
 radiatively through the opening, governed by the effective emissivity.
