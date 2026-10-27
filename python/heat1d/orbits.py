@@ -159,6 +159,77 @@ def generalHourAngle(t, P_sid, P_orb, ecc, lon=0.0, M0=0.0):
     return h
 
 
+def noonMeanAnomaly(lon, P_solar, P_orb, ecc, true_anomaly=None):
+    """Mean anomaly at which local noon occurs at an observer.
+
+    Without an ephemeris, longitude needs a reference orientation; the
+    convention here is that the prime meridian (lon = 0) is subsolar at
+    perihelion.  This is the IAU definition for Mercury, whose 3:2
+    spin-orbit resonance puts its hot poles at 0 and 180 E and its warm
+    poles at 90 and 270 E.  The subsolar east longitude at time tau
+    after perihelion is nu(tau) - Omega*tau, so local noon at ``lon``
+    satisfies
+
+        2*pi*(tau - tau_mean)/P_solar = nu - M  (the equation of center),
+
+    where tau_mean is local *mean* noon, 2*pi*tau_mean/P_solar + lon = 0
+    (mod 2*pi).  When the sun's apparent motion briefly reverses (Mercury
+    near perihelion) there are several solutions; the one nearest mean
+    noon is used.
+
+    Parameters
+    ----------
+    lon : float
+        Observer east longitude [rad].
+    P_solar : float
+        Mean solar day [s] (planet.day).
+    P_orb : float
+        Orbital period [s] (planet.year).
+    ecc : float
+        Orbital eccentricity.
+    true_anomaly : float or None
+        If given, noon is placed at this true anomaly [rad] instead, and
+        ``lon`` is not used.
+
+    Returns
+    -------
+    float
+        Mean anomaly [rad] at local noon, in [0, 2*pi).
+    """
+    if true_anomaly is not None:
+        return float(meanFromTrue(true_anomaly, ecc)) % TWOPI
+
+    tau_mean = (-lon % TWOPI) / TWOPI * P_solar
+
+    def G(tau):
+        M = TWOPI * tau / P_orb
+        nu = trueFromMean(M, ecc)
+        eoc = (nu - M + np.pi) % TWOPI - np.pi  # equation of center
+        return TWOPI * (tau - tau_mean) / P_solar - eoc
+
+    # |eoc| < pi/2 for any bound orbit of interest, so true noon lies
+    # within a quarter day of mean noon.  G can be non-monotonic, so
+    # find every sign change on a fine grid and refine by bisection.
+    tau = tau_mean + np.linspace(-0.25, 0.25, 20001) * P_solar
+    g = G(tau)
+    roots = []
+    for i in np.flatnonzero(np.sign(g[:-1]) != np.sign(g[1:])):
+        lo, hi = tau[i], tau[i + 1]
+        g_lo = g[i]
+        for _ in range(60):
+            mid = 0.5 * (lo + hi)
+            g_mid = G(mid)
+            if np.sign(g_mid) == np.sign(g_lo):
+                lo, g_lo = mid, g_mid
+            else:
+                hi = mid
+        roots.append(0.5 * (lo + hi))
+    exact = tau[g == 0.0]
+    roots.extend(exact)
+    tau_noon = min(roots, key=lambda r: abs(r - tau_mean))
+    return float(TWOPI * tau_noon / P_orb) % TWOPI
+
+
 # -------------------------------------------------------------------
 # Existing functions (preserved for backward compatibility)
 # -------------------------------------------------------------------

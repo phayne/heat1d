@@ -115,10 +115,16 @@ heat1d --planet Europa --lat 0
 model = Model(planet=planets.Bennu, lat=0, ndays=1)
 ```
 
-For bodies on eccentric orbits, the longitude (`--lon`, or `lon` in Python) sets the orbital position at local noon rather than a geographic longitude: `0` puts noon at perihelion and `180` at aphelion. For Mercury these give the hot pole (~700 K) and warm pole (~570 K), respectively:
+`--lon` (or `lon` in Python, in radians) is always east longitude. Without an ephemeris, longitudes are referenced so that 0° E faces the Sun at perihelion, which is the IAU definition for Mercury. Mercury's 3:2 spin-orbit resonance then puts its hot poles (~700 K) at 0° and 180° E and its warm poles (~570 K) at 90° and 270° E:
 
 ```bash
-heat1d --planet Mercury --lat 0 --lon 180   # warm pole
+heat1d --planet Mercury --lat 0 --lon 90    # warm pole
+```
+
+To choose the orbital position (season) directly, use `--true-anomaly` (degrees, 0 = perihelion; `true_anomaly` in Python, in radians), which places local noon at that point in the orbit. It cannot be combined with `--lon` or `--use-spice`:
+
+```bash
+heat1d --planet Bennu --true-anomaly 180    # noon at aphelion
 ```
 
 Any property can be overridden in the `planet:` section of a YAML config file: `albedo`, `emissivity`, `ks`, `kd`, `rhos`, `rhod`, `H`, `cp0`, `cpCoeff`, `Qb`, `S`, `rAU`, `day`, `year`, `eccentricity`, `obliquity`, and `Lp`. Changing `rAU` rescales the solar flux `S` by the inverse square of distance unless `S` is also given. This also makes bodies whose entries carry only orbital data (Pluto, Triton, etc.) usable by supplying their thermophysical properties; running one without them stops with an error listing what is missing.

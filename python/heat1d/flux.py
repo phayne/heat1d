@@ -19,7 +19,7 @@ from pathlib import Path
 
 
 def precompute_flux(planet, lat, nsteps, dec=0, r=None, lon=0.0,
-                    slope=0.0, slope_az=0.0):
+                    slope=0.0, slope_az=0.0, true_anomaly=None):
     """Pre-compute absorbed surface flux for one diurnal cycle.
 
     Wraps :func:`fourier_solver.precompute_diurnal_flux` to provide a
@@ -38,11 +38,13 @@ def precompute_flux(planet, lat, nsteps, dec=0, r=None, lon=0.0,
     r : float or None, optional
         Heliocentric distance [AU]. Default ``planet.rAU``.
     lon : float, optional
-        Observer longitude [rad]. Default 0.
+        Observer east longitude [rad]. Default 0.
     slope : float, optional
         Surface slope [rad]. Default 0 (flat).
     slope_az : float, optional
         Slope azimuth [rad], clockwise from north (0 = N). Default 0.
+    true_anomaly : float or None, optional
+        True anomaly [rad] at local noon; overrides ``lon``. Default None.
 
     Returns
     -------
@@ -53,7 +55,8 @@ def precompute_flux(planet, lat, nsteps, dec=0, r=None, lon=0.0,
     """
     from .fourier_solver import precompute_diurnal_flux
     return precompute_diurnal_flux(planet, lat, nsteps, dec=dec, r=r,
-                                   lon=lon, slope=slope, slope_az=slope_az)
+                                   lon=lon, slope=slope, slope_az=slope_az,
+                                   true_anomaly=true_anomaly)
 
 
 def write_flux_file(path, flux_series, dt):

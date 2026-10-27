@@ -38,7 +38,7 @@ from .properties import albedoVar
 
 def compute_flux_array(planet, lat_rad, nsteps, t_start_hr=0.0,
                        t_stop_hr=24.0, dec_rad=0.0, r=None,
-                       lon=0.0, slope=0.0, slope_az=0.0):
+                       lon=0.0, slope=0.0, slope_az=0.0, true_anomaly=None):
     """Compute absorbed solar flux over a local-time window.
 
     Parameters
@@ -59,7 +59,8 @@ def compute_flux_array(planet, lat_rad, nsteps, t_start_hr=0.0,
     r : float or None
         Heliocentric distance [AU]. Used only for circular orbit (ecc <= 0.05).
     lon : float
-        Observer longitude [rad]. Default 0.
+        Observer east longitude [rad] (see orbits.noonMeanAnomaly).
+        Default 0.
     slope : float
         Surface slope [rad]. Default 0 (flat).  When > 0 the direct
         beam is projected onto the tilted surface with self-shadowing
@@ -67,6 +68,8 @@ def compute_flux_array(planet, lat_rad, nsteps, t_start_hr=0.0,
         indirect terrain flux (ground heating) is not.
     slope_az : float
         Slope azimuth [rad], clockwise from north (0 = N). Default 0.
+    true_anomaly : float or None
+        True anomaly [rad] at local noon; overrides ``lon``. Default None.
 
     Returns
     -------
@@ -91,11 +94,13 @@ def compute_flux_array(planet, lat_rad, nsteps, t_start_hr=0.0,
     if ecc > 0.05:
         # General eccentric orbit
         P_sid = orbits.siderealPeriod(planet.day, planet.year)
-        M0 = orbits.meanFromTrue(lon, ecc)
+        M0 = orbits.noonMeanAnomaly(lon, planet.day, planet.year, ecc,
+                                    true_anomaly)
         M = M0 + orbits.TWOPI * t / planet.year
         nu = orbits.trueFromMean(M, ecc)
 
-        h = orbits.TWOPI * t / P_sid + lon - nu
+        # Zero (local noon) at t = 0
+        h = orbits.TWOPI * t / P_sid + float(orbits.trueFromMean(M0, ecc)) - nu
 
         a_au = planet.rAU
         x = a_au * (1 - ecc**2)

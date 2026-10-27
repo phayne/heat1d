@@ -49,6 +49,10 @@ Options:
   --slope-az FLOAT     Slope azimuth [deg clockwise from N: 0=N, 90=E]
   --ground-heating / --no-ground-heating
                        Indirect terrain flux for slopes (default: on)
+  --lon FLOAT          East longitude [degrees]; without --use-spice,
+                       0 E faces the Sun at perihelion
+  --true-anomaly FLOAT Orbital true anomaly at local noon [degrees,
+                       0 = perihelion]; not with --lon or --use-spice
   -h, --help           Show help and exit
 ```
 
@@ -112,7 +116,11 @@ output:
 
 **planet**: Planet name and optional property overrides. Properties that can be
 overridden: `albedo`, `emissivity`, `ks`, `kd`, `rhos`, `rhod`,
-`H`, `cp0`, `Qb`.
+`H`, `cp0`, `cpCoeff`, `Qb`, `S`, `rAU`, `day`, `year`, `eccentricity`,
+`obliquity`, `Lp`.
+
+**true_anomaly** (top level): Orbital true anomaly at local noon [degrees],
+equivalent to `--true-anomaly`.
 
 **numerical**: Grid and solver parameters mapped to `Configurator` fields.
 
