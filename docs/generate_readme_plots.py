@@ -18,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 
 import matplotlib.pyplot as plt
 import numpy as np
-import planets
 
+from heat1d import planets
 from heat1d.config import Configurator
 from heat1d.model import Model
 from heat1d.validation import ALL_SOLVERS, SOLVER_STYLES, _setup_pub_style
@@ -50,64 +50,88 @@ def _run(lat_deg=0, solver="fourier-matrix", output_interval=None, **kw):
 
 def plot_hero(model, outdir):
     """Two-panel hero: depth profiles at selected times + diurnal curves at depth."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    # Larger text than the other plots: this image is shown full-width at the
+    # top of the README, where the default sizes are hard to read
+    with plt.rc_context({
+        "font.size": 15,
+        "axes.labelsize": 17,
+        "axes.titlesize": 18,
+        "xtick.labelsize": 15,
+        "ytick.labelsize": 15,
+        "legend.fontsize": 13,
+        "legend.title_fontsize": 14,
+    }):
+        _plot_hero(model, outdir)
+
+
+def _plot_hero(model, outdir):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
     lt = model.lt
     z_cm = model.profile.z * 100  # m -> cm
 
+    # Both panels avoid the near-white ends of their colormaps, which
+    # vanish against the white background
+    cmap = plt.cm.plasma
+
     # --- Left panel: T(z) at several local times ---
     # Pick ~8 evenly-spaced snapshots through the day
     times_hr = [0, 3, 6, 9, 12, 15, 18, 21]
-    cmap = plt.cm.twilight_shifted
-    norm = plt.Normalize(0, 24)
 
     # Limit depth to top 40 cm where the action is
     i_depth = np.searchsorted(z_cm, 40)
 
-    for t_hr in times_hr:
+    for k, t_hr in enumerate(times_hr):
         i_t = np.argmin(np.abs(lt - t_hr))
-        color = cmap(norm(t_hr))
+        color = cmap(0.85 * k / (len(times_hr) - 1))
         label = f"{t_hr:.0f} hr"
         ax1.plot(model.T[i_t, :i_depth], z_cm[:i_depth],
-                 color=color, lw=1.5, label=label)
+                 color=color, lw=2.2, label=label)
 
     ax1.invert_yaxis()
     ax1.set_xlabel("Temperature [K]")
     ax1.set_ylabel("Depth [cm]")
     ax1.set_title("Thermal Wave Propagation")
-    ax1.legend(title="Local Time", fontsize=8, frameon=False,
-               loc="lower left", ncol=2)
+    ax1.legend(title="Local Time", frameon=False, loc="lower left", ncol=2)
 
     # --- Right panel: T(t) at several depths ---
     # Pick depths that show the damping nicely
     depth_targets_cm = [0, 1, 2, 4, 7, 12, 20, 35]
-    cmap2 = plt.cm.magma_r
     n_depths = len(depth_targets_cm)
 
     for j, d_cm in enumerate(depth_targets_cm):
         i_z = np.argmin(np.abs(z_cm - d_cm))
         actual_cm = z_cm[i_z]
-        color = cmap2(j / (n_depths - 1) * 0.85)  # avoid lightest end
+        if j == 0:
+            # Surface: the dominant curve, drawn in black on top
+            color, lw, zorder = "black", 2.8, 3
+        else:
+            # Shallow = warm orange, deep = dark purple
+            color = cmap(0.85 - 0.75 * (j - 1) / (n_depths - 2))
+            lw, zorder = 2.2, 2
         label = f"{actual_cm:.1f} cm" if actual_cm >= 1 else "Surface"
-        ax2.plot(lt, model.T[:, i_z], color=color, lw=1.3, label=label)
+        ax2.plot(lt, model.T[:, i_z], color=color, lw=lw, zorder=zorder,
+                 label=label)
 
     ax2.set_xlabel("Local Time [hr]")
     ax2.set_ylabel("Temperature [K]")
     ax2.set_xlim(0, 24)
     ax2.set_xticks([0, 6, 12, 18, 24])
     ax2.set_title("Diurnal Temperature at Depth")
-    ax2.legend(title="Depth", fontsize=8, frameon=False, loc="upper right")
+    # Outside the axes: inside, it covers the surface curve at sunrise
+    ax2.legend(title="Depth", frameon=False, loc="upper left",
+               bbox_to_anchor=(1.01, 1.0))
 
     # Secondary labels on right panel
     ax2t = ax2.twiny()
     ax2t.set_xlim(0, 24)
     ax2t.set_xticks([0, 6, 12, 18, 24])
     ax2t.set_xticklabels(["Noon", "Sunset", "Midnight", "Sunrise", "Noon"],
-                         fontsize=8, color="0.4")
+                         fontsize=13, color="0.35")
     ax2t.tick_params(length=0)
 
-    fig.suptitle("Lunar Equatorial Thermal Model", fontsize=14,
-                 fontweight="bold", y=1.02)
+    fig.suptitle("Lunar Equatorial Thermal Model", fontsize=20,
+                 fontweight="bold")
     fig.tight_layout()
     fig.savefig(outdir / "diurnal_surface_temperature.png", dpi=200,
                 bbox_inches="tight")
