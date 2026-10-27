@@ -41,7 +41,10 @@ def _run(lat_deg=0, solver="fourier-matrix", output_interval=None, **kw):
     if output_interval is not None:
         config.output_interval = output_interval
     planet = _make_planet()
-    model = Model(planet=planet, lat=np.deg2rad(lat_deg), ndays=1, config=config)
+    # Noon at 1 AU (r = a), matching the validation suite and Hayne et al.
+    # (2017), rather than the default perihelion noon
+    model = Model(planet=planet, lat=np.deg2rad(lat_deg), ndays=1, config=config,
+                  true_anomaly=np.arccos(-planet.eccentricity))
     model.run()
     return model
 
