@@ -88,6 +88,45 @@ print(f"Min  T: {model.T[:, 0].min():.1f} K")
 print(f"Grid: {model.N_z} layers to {model.profile.z[-1]:.2f} m depth")
 ```
 
+## Supported Planetary Bodies
+
+The following bodies have built-in orbital and thermophysical parameters and can be selected by name with `--planet` (CLI), `planet: name:` (YAML), or `planets.<Name>` (Python):
+
+| Body | Type | Surface properties | Horizons ID |
+|---|---|---|---|
+| `Moon` (default) | Satellite of Earth | Lunar regolith ([Hayne et al., 2017](https://doi.org/10.1002/2017JE005387)) | 301 |
+| `Europa` | Galilean satellite | Porous ice regolith | 502 |
+| `Ganymede` | Galilean satellite | Porous ice regolith | 503 |
+| `Bennu` | Near-Earth asteroid | Lunar regolith defaults | 2101955 |
+| `Donaldjohanson` | Main-belt asteroid (Lucy target) | Lunar regolith defaults | 2052246 |
+| `Eurybates` | Jupiter Trojan (Lucy target) | Lunar regolith defaults | 2003548 |
+| `Polymele` | Jupiter Trojan (Lucy target) | Lunar regolith defaults | 2015094 |
+| `Leucus` | Jupiter Trojan (Lucy target) | Lunar regolith defaults | 2011351 |
+| `Orus` | Jupiter Trojan (Lucy target) | Lunar regolith defaults | 2021900 |
+| `Patroclus` | Jupiter Trojan binary (Lucy target) | Lunar regolith defaults | 2000617 |
+| `Menoetius` | Jupiter Trojan binary (Lucy target) | Lunar regolith defaults | 2000617 |
+
+```bash
+heat1d --planet Europa --lat 0
+```
+
+```python
+model = Model(planet=planets.Bennu, lat=0, ndays=1)
+```
+
+Any property can be overridden in the `planet:` section of a YAML config file (e.g. `albedo`, `ks`, `kd`, `rhos`, `rhod`, `H`, `Qb`). Other airless bodies can be modeled with `planet: name: Custom`, which starts from lunar regolith properties, combined with `--use-spice --body-id <ID>` to fetch the body's orbit, rotation period, radius, and albedo from [JPL Horizons](#jpl-horizons-ephemeris-spice):
+
+```yaml
+# ceres.yaml
+planet:
+  name: "Custom"
+```
+
+```bash
+heat1d ceres.yaml --use-spice --body-id 2000001 --lat 0 --lon 0 \
+    --start-time "2025-01-01 00:00" --ndays 1
+```
+
 ## Example Output
 
 ### Temperature vs. Depth and Local Time
