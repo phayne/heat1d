@@ -3,7 +3,6 @@
 **One-dimensional thermal model for planetary science applications**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Documentation](https://readthedocs.org/projects/heat1d/badge/?version=latest)](https://heat1d.readthedocs.io)
 
 `heat1d` solves the 1-D heat equation in planetary regolith with depth- and temperature-dependent thermophysical properties, following the formulation of [Hayne et al. (2017)](https://doi.org/10.1002/2017JE005387). Implementations are provided in Python, C, and MATLAB.
 
@@ -176,6 +175,33 @@ model.run()
 
 See the [Sloped Surfaces](python/docs/slopes.md) documentation for the geometry, view factors, and approximations.
 
+## JPL Horizons Ephemeris (SPICE)
+
+With `--use-spice`, `heat1d` drives the surface boundary condition with the actual solar geometry at a specific site and time instead of an idealized diurnal cycle. It queries the [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) system for the Sun's azimuth, elevation, and distance as seen from the given latitude and longitude. This captures the real solar distance, seasonal declination, and (for satellites) eclipses by the parent body. A network connection is required.
+
+```bash
+# Apollo 15 landing site (26.13 N, 3.63 E), one lunar day starting 2024-06-15 12:00 UTC
+heat1d --use-spice --lat 26.13 --lon 3.63 --start-time "2024-06-15 12:00" --ndays 1
+
+# Equator at the sub-Earth point through the total lunar eclipse of 2025-03-14,
+# using an explicit stop time and a fine output step to resolve the eclipse
+heat1d --use-spice --lat 0 --lon 0 \
+    --start-time "2025-03-13 00:00" --stop-time "2025-03-15 00:00" --output-dt 0.05
+```
+
+In the second example the Moon passes through Earth's shadow near local noon, and the surface temperature drops from ~380 K to ~175 K before recovering.
+
+Notes:
+
+- Times are UTC and must be given as `"YYYY-MM-DD HH:MM"`.
+- Set the run length with `--ndays` (in diurnal cycles) or `--stop-time`.
+- The model is first equilibrated with the built-in Fourier solver; the Horizons ephemeris drives the output period only.
+- Because the run starts at an arbitrary UTC epoch, the `local_time_hr` output column begins at that epoch's local time rather than at noon (0 = local noon, 12 = local midnight).
+- Eclipses are detected automatically for satellites; disable with `--no-eclipses`, or set the parent body with `--parent-body-id`.
+- `--body-id` overrides the Horizons body ID (e.g. `301` for the Moon, `2101955` for Bennu).
+
+See the [CLI Reference](python/docs/cli.md) for all options.
+
 ## Graphical User Interface
 
 The GUI provides interactive control over all model parameters with real-time visualization:
@@ -276,8 +302,6 @@ Detailed documentation is organized by topic:
 | [API Reference](python/docs/api.rst) | Python class and function documentation |
 | [C Implementation](c/README.md) | Building, running, and configuring the C code |
 | [MATLAB Implementation](matlab/README.md) | MEX-file version for MATLAB |
-
-Rendered documentation: [heat1d.readthedocs.io](https://heat1d.readthedocs.io)
 
 ## Validation
 

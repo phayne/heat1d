@@ -2,17 +2,11 @@
 heat1d
 ======
 
-
-.. image:: https://readthedocs.org/projects/heat1d/badge/?version=latest
-        :target: https://heat1d.readthedocs.io/en/latest/?badge=latest
-        :alt: Documentation Status
-
-
 Thermal model for planetary science applications (Python version)
 
 
 * Free software: MIT license
-* Documentation: https://heat1d.readthedocs.io.
+* Documentation: https://github.com/phayne/heat1d/tree/master/python/docs
 
 See the notebook_ for an example.
 
@@ -39,7 +33,7 @@ current version from GitHub (requires Python 3.9 or newer):
 Add the ``[gui]`` extra (``"heat1d[gui] @ git+..."``) for the graphical user
 interface. See the `installation docs`_ for development installs.
 
-.. _`installation docs`: https://heat1d.readthedocs.io/en/latest/installation.html
+.. _`installation docs`: https://github.com/phayne/heat1d/blob/master/python/docs/installation.rst
 
 
 Credits

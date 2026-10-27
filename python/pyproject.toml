@@ -57,7 +57,7 @@ generate-flux = "heat1d.generate_flux:main"
 
 [project.urls]
 Homepage = "https://github.com/phayne/heat1d"
-Documentation = "https://heat1d.readthedocs.io"
+Documentation = "https://github.com/phayne/heat1d/tree/master/python/docs"
 Repository = "https://github.com/phayne/heat1d"
 
 [tool.setuptools.packages.find]
