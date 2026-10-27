@@ -61,7 +61,9 @@ class TestExplicitSolver:
         """Explicit solver reproduces known Moon equator result."""
         config = Configurator(solver="explicit",
                               equil_dt=DAY / 480)
-        m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config)
+        # Noon at 1 AU (r = a), as in Hayne et al. (2017)
+        m = Model(planet=planets.Moon, lat=0.0, ndays=1, config=config,
+                  true_anomaly=np.arccos(-planets.Moon.eccentricity))
         m.run()
         # Regression values with angle-dependent albedo (A_h=0.12), n=4 grid
         # (Fourier equilibration + 3-cycle warmup; ref 385 +/- 5 K)

@@ -115,3 +115,31 @@ def test_lon_and_true_anomaly_exclusive():
     """lon and true_anomaly cannot both be given."""
     with pytest.raises(ValueError, match="mutually exclusive"):
         heat1d.Model(lon=0.5, true_anomaly=1.0)
+
+
+def test_fourier_uses_orbital_position_low_eccentricity():
+    """The Fourier solver uses the distance at noon even for e <= 0.05."""
+    import numpy as np
+
+    config = heat1d.Configurator(solver="fourier-matrix")
+    peri = heat1d.Model(ndays=1, config=config, true_anomaly=0.0)
+    aph = heat1d.Model(ndays=1, config=config, true_anomaly=np.pi)
+    peri.run()
+    aph.run()
+    e = heat1d.planets.Moon.eccentricity
+    ratio = np.sqrt((1 + e) / (1 - e))
+    assert peri.T[:, 0].max() / aph.T[:, 0].max() == pytest.approx(
+        ratio, rel=0.003)
+
+
+@pytest.mark.parametrize("true_anomaly", [0.0, 3.141592653589793])
+def test_solvers_agree_on_orbital_position(true_anomaly):
+    """Time-stepping output starts at the requested orbital position, so
+    its noon peak matches the Fourier solver's."""
+    peaks = []
+    for solver in ("fourier-matrix", "crank-nicolson"):
+        m = heat1d.Model(ndays=1, true_anomaly=true_anomaly,
+                         config=heat1d.Configurator(solver=solver))
+        m.run()
+        peaks.append(m.T[:, 0].max())
+    assert peaks[0] == pytest.approx(peaks[1], abs=0.5)

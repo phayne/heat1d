@@ -291,7 +291,9 @@ class TestRegression:
         planet.H = 0.06
 
         config = Configurator(solver="fourier-matrix", output_interval=planets.Moon.day / 480)
-        m = Model(planet=planet, lat=0.0, ndays=1, config=config)
+        # Noon at 1 AU (r = a), as in Hayne et al. (2017)
+        m = Model(planet=planet, lat=0.0, ndays=1, config=config,
+                  true_anomaly=np.arccos(-planet.eccentricity))
         m.run()
 
         T_surf = m.T[:, 0]
