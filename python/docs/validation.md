@@ -110,17 +110,21 @@ uncertainties.
 With the Hayne et al. (2017) Table A1 standard properties (highland albedo for
 equator, mare albedo for Apollo sites, *H* = 0.06 m), all 8 validation checks
 pass. The Apollo checks use a finer grid (m=20, b=30) and longer equilibration
-(25 orbits) to ensure the 0.83 m subsurface temperature is well converged:
+(25 orbits) to ensure the 0.83 m subsurface temperature is well converged.
+All validation runs place local noon where the Sun–Moon distance equals the
+semi-major axis (1 AU, true anomaly $\nu = \arccos(-e)$), as in Hayne et al.
+(2017); the model default (`lon=0`) instead puts noon at Earth's perihelion
+(0.983 AU), which raises the peak temperature by ~3 K. Explicit solver:
 
 ```text
-[PASS] equator_peak_noon_T: 388.5 K (ref: 385.0 +/- 5.0 K)
-[PASS] equator_midnight_T: 100.2 K (ref: 101.0 +/- 5.0 K)
-[PASS] equator_min_night_T: 93.7 K (ref: 95.0 +/- 5.0 K)
+[PASS] equator_peak_noon_T: 385.2 K (ref: 385.0 +/- 5.0 K)
+[PASS] equator_midnight_T: 99.0 K (ref: 101.0 +/- 5.0 K)
+[PASS] equator_min_night_T: 92.5 K (ref: 95.0 +/- 5.0 K)
 [PASS] energy_conservation: relative error = 0.0000
-[PASS] apollo15_surface_mean_T: 209.1 K (ref: 211.0 +/- 5.0 K)
-[PASS] apollo15_subsurface_mean_T: 252.9 K (ref: 252.0 +/- 5.0 K)
-[PASS] apollo17_surface_mean_T: 211.7 K (ref: 216.0 +/- 5.0 K)
-[PASS] apollo17_subsurface_mean_T: 255.4 K (ref: 256.0 +/- 5.0 K)
+[PASS] apollo15_surface_mean_T: 212.2 K (ref: 211.0 +/- 5.0 K)
+[PASS] apollo15_subsurface_mean_T: 256.2 K (ref: 252.0 +/- 5.0 K)
+[PASS] apollo17_surface_mean_T: 214.2 K (ref: 216.0 +/- 5.0 K)
+[PASS] apollo17_subsurface_mean_T: 258.5 K (ref: 256.0 +/- 5.0 K)
 8/8 checks passed
 ```
 

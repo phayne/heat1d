@@ -110,7 +110,9 @@ class Model(object):
         self.M0 = orbits.noonMeanAnomaly(lon, planet.day, planet.year,
                                          planet.eccentricity, true_anomaly)
         self.M = self.M0  # mean anomaly [rad], advanced uniformly
-        self.nu = float(orbits.trueFromMean(self.M, planet.eccentricity))
+        # Distance and declination at noon, used by the Fourier solver
+        orbits.orbitParams(self)
+        self.nu = float(self.nu)
         # Rotation phase reference: nu at t=0 of the current phase.
         # Hour angle is h(t) = 2*pi*t/P_sid + _nu0 - nu(t),
         # ensuring h(0) = 0 at each phase boundary.
@@ -246,10 +248,17 @@ class Model(object):
             self._output_cfl = True
             self._adaptive = False
         self.dt = computeCFL(self.profile, config)
+        # Start the warmup that much earlier in the orbit so the output
+        # phase begins at the requested orbital position (M0), wherever
+        # equilibration left the orbit
+        self._set_orbit(self.M0 - orbits.TWOPI * n_warmup * self.planet.day
+                        / self.planet.year)
         warmup_end = self.t + n_warmup * self.planet.day
         while self.t < warmup_end:
             self.advance()
         self._output_cfl = False
+        # Remove the overshoot of the last warmup step
+        self._set_orbit(self.M0)
 
         # --- Prepare for output phase ---
         # For implicit/CN, use CFL-based dt so the diurnal wave is
@@ -491,6 +500,18 @@ class Model(object):
                               Qs_prev=self._Qs_prev)
         self.profile.update_properties()
         self.t += self.dt  # Increment time
+
+    def _set_orbit(self, M):
+        """Move the orbit to mean anomaly *M*, keeping local time.
+
+        Shifts the hour-angle reference ``_nu0`` with the true anomaly so
+        that h(t) = 2*pi*t/P_sid + _nu0 - nu(t) is continuous.
+        """
+        nu_old = self.nu
+        self.M = M
+        orbits.orbitParams(self)
+        self.nu = float(self.nu)
+        self._nu0 += self.nu - nu_old
 
     def updateOrbit(self):
         """Update orbit parameters for the insolation calculation.

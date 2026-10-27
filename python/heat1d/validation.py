@@ -229,7 +229,10 @@ def _run_model(lat_deg, ndays=1, solver="explicit", nyearseq=1, b=20, m=10,
         if original_albedo > 0:
             scale = albedo / original_albedo
             planet.albedoCoef = [c * scale for c in planet.albedoCoef]
-    model = Model(planet=planet, lat=lat_rad, ndays=ndays, config=config)
+    # Noon where r = a (cos(nu) = -e), i.e. 1 AU as in Hayne et al.
+    # (2017), rather than the default perihelion noon
+    model = Model(planet=planet, lat=lat_rad, ndays=ndays, config=config,
+                  true_anomaly=np.arccos(-planet.eccentricity))
     model.run()
     return model
 
