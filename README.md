@@ -2,7 +2,6 @@
 
 **One-dimensional thermal model for planetary science applications**
 
-[![PyPI version](https://img.shields.io/pypi/v/heat1d.svg)](https://pypi.python.org/pypi/heat1d)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Documentation](https://readthedocs.org/projects/heat1d/badge/?version=latest)](https://heat1d.readthedocs.io)
 
@@ -30,14 +29,24 @@
 
 ### Installation
 
+The `heat1d` package on PyPI is an obsolete release that is no longer updated, so don't use `pip install heat1d`. Install the current version directly from GitHub (requires Python ≥ 3.9). The Python package lives in the `python/` subdirectory of this repository:
+
 ```bash
-pip install heat1d
+pip install "heat1d @ git+https://github.com/phayne/heat1d.git#subdirectory=python"
 ```
 
-For the graphical user interface:
+For the graphical user interface (PySide6):
 
 ```bash
-pip install "heat1d[gui]"
+pip install "heat1d[gui] @ git+https://github.com/phayne/heat1d.git#subdirectory=python"
+```
+
+For development, clone the repository and do an editable install:
+
+```bash
+git clone https://github.com/phayne/heat1d.git
+cd heat1d/python
+pip install -e ".[dev,gui]"
 ```
 
 ### Command Line
@@ -66,8 +75,7 @@ heat1d-gui
 
 ```python
 import numpy as np
-import planets
-from heat1d import Model, Configurator
+from heat1d import Model, Configurator, planets
 
 config = Configurator(solver="crank-nicolson")
 model = Model(planet=planets.Moon, lat=np.deg2rad(30), ndays=1, config=config)
@@ -182,7 +190,7 @@ The GUI provides interactive control over all model parameters with real-time vi
 
 ![heat1d GUI with depth profile editor and diurnal temperature curves](docs/images/heat1d_screenshot.png)
 
-Install with `pip install "heat1d[gui]"` and launch with `heat1d-gui`.
+Install with the `[gui]` extra (see [Installation](#installation)) and launch with `heat1d-gui`.
 
 ## C Implementation
 

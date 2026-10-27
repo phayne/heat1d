@@ -4,48 +4,51 @@
 Installation
 ============
 
+.. note::
 
-Stable release
---------------
+   The ``heat1d`` package on PyPI is an obsolete release (0.3.2) and is no
+   longer updated. Do not use ``pip install heat1d``; install from GitHub
+   as described below.
 
-To install heat1d, run this command in your terminal:
+heat1d requires Python 3.9 or newer.
+
+
+From GitHub (recommended)
+-------------------------
+
+The Python package lives in the ``python/`` subdirectory of the `Github repo`_.
+Install the latest version directly with pip:
 
 .. code-block:: console
 
-    $ pip install heat1d
+    $ pip install "heat1d @ git+https://github.com/phayne/heat1d.git#subdirectory=python"
 
-This is the preferred method to install heat1d, as it will always install the most recent stable release. 
+To include the graphical user interface (PySide6):
+
+.. code-block:: console
+
+    $ pip install "heat1d[gui] @ git+https://github.com/phayne/heat1d.git#subdirectory=python"
 
 If you don't have `pip`_ installed, this `Python installation guide`_ can guide
 you through the process.
-
-.. _pip: https://pip.pypa.io
-.. _Python installation guide: http://docs.python-guide.org/en/latest/starting/installation/
 
 
 From sources
 ------------
 
-The sources for heat1d can be downloaded from the `Github repo`_.
-
-You can either clone the public repository:
+For development, clone the repository and do an editable install:
 
 .. code-block:: console
 
-    $ git clone git://github.com/phayne/heat1d
+    $ git clone https://github.com/phayne/heat1d.git
+    $ cd heat1d/python
+    $ pip install -e ".[dev,gui]"
 
-Or download the `tarball`_:
-
-.. code-block:: console
-
-    $ curl  -OL https://github.com/phayne/heat1d/tarball/master
-
-Once you have a copy of the source, you can install it with:
-
-.. code-block:: console
-
-    $ python setup.py install
+Alternatively, download the `tarball`_, extract it, and run
+``pip install .`` from its ``python/`` subdirectory.
 
 
+.. _pip: https://pip.pypa.io
+.. _Python installation guide: https://docs.python-guide.org/starting/installation/
 .. _Github repo: https://github.com/phayne/heat1d
 .. _tarball: https://github.com/phayne/heat1d/tarball/master
