@@ -98,14 +98,9 @@ The following bodies have built-in orbital and thermophysical parameters and can
 | `Mercury` | Planet | Lunar regolith defaults | 199 |
 | `Europa` | Galilean satellite | Porous ice regolith | 502 |
 | `Ganymede` | Galilean satellite | Porous ice regolith | 503 |
-| `Bennu` | Near-Earth asteroid | Lunar regolith defaults | 2101955 |
-| `Donaldjohanson` | Main-belt asteroid (Lucy target) | Lunar regolith defaults | 2052246 |
-| `Eurybates` | Jupiter Trojan (Lucy target) | Lunar regolith defaults | 2003548 |
-| `Polymele` | Jupiter Trojan (Lucy target) | Lunar regolith defaults | 2015094 |
-| `Leucus` | Jupiter Trojan (Lucy target) | Lunar regolith defaults | 2011351 |
-| `Orus` | Jupiter Trojan (Lucy target) | Lunar regolith defaults | 2021900 |
-| `Patroclus` | Jupiter Trojan binary (Lucy target) | Lunar regolith defaults | 2000617 |
-| `Menoetius` | Jupiter Trojan binary (Lucy target) | Lunar regolith defaults | 2000617 |
+| Small bodies, e.g. `Bennu`, `Patroclus` | Asteroids, incl. near-Earth, main-belt, and Jupiter Trojan (Lucy mission targets) | Lunar regolith defaults | e.g. 2101955 (Bennu) |
+
+The other built-in small bodies are defined in [`python/heat1d/planets.py`](python/heat1d/planets.py).
 
 ```bash
 heat1d --planet Europa --lat 0
