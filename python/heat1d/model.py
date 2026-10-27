@@ -18,6 +18,33 @@ from .properties import albedoVar
 from .solvers import computeCFL, getTimeStep
 
 
+# Planet attributes the model needs; bodies in ``planets`` that only carry
+# orbital data (e.g. the giant planets) lack the thermophysical ones
+_REQUIRED_PLANET_ATTRS = (
+    "S", "albedo", "emissivity", "Qb",
+    "ks", "kd", "rhos", "rhod", "H", "cp0", "cpCoeff",
+    "rAU", "year", "day", "eccentricity", "obliquity", "Lp",
+)
+
+
+def _check_planet(planet, config):
+    """Raise ValueError if *planet* lacks properties required by the model."""
+    missing = [a for a in _REQUIRED_PLANET_ATTRS
+               if getattr(planet, a, None) is None]
+    # cpCoeff is unused with a fixed or non-polynomial heat capacity
+    if (getattr(planet, "cp_fixed", None) is not None
+            or config.cp_model != "polynomial"):
+        missing = [a for a in missing if a != "cpCoeff"]
+    if missing:
+        name = getattr(planet, "name", None) or "planet"
+        raise ValueError(
+            f"{name} is missing properties required by heat1d: "
+            f"{', '.join(missing)}. Set them on the planet object (or in "
+            f"the 'planet:' section of a YAML config), or choose a body "
+            f"with built-in thermophysical properties."
+        )
+
+
 class Model(object):
 
     # Initialization
@@ -25,6 +52,8 @@ class Model(object):
                  flux_series=None, flux_dt=None, custom_layers=None, psr_d_D=None,
                  slope=0.0, slope_az=0.0, ground_heating=None, flux_noon_idx=None,
                  flux_lt0_hr=None):
+
+        _check_planet(planet, config)
 
         # Initialize
         self.planet = planet

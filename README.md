@@ -95,6 +95,7 @@ The following bodies have built-in orbital and thermophysical parameters and can
 | Body | Type | Surface properties | Horizons ID |
 |---|---|---|---|
 | `Moon` (default) | Satellite of Earth | Lunar regolith ([Hayne et al., 2017](https://doi.org/10.1002/2017JE005387)) | 301 |
+| `Mercury` | Planet | Lunar regolith defaults | 199 |
 | `Europa` | Galilean satellite | Porous ice regolith | 502 |
 | `Ganymede` | Galilean satellite | Porous ice regolith | 503 |
 | `Bennu` | Near-Earth asteroid | Lunar regolith defaults | 2101955 |
@@ -114,7 +115,15 @@ heat1d --planet Europa --lat 0
 model = Model(planet=planets.Bennu, lat=0, ndays=1)
 ```
 
-Any property can be overridden in the `planet:` section of a YAML config file (e.g. `albedo`, `ks`, `kd`, `rhos`, `rhod`, `H`, `Qb`). Other airless bodies can be modeled with `planet: name: Custom`, which starts from lunar regolith properties, combined with `--use-spice --body-id <ID>` to fetch the body's orbit, rotation period, radius, and albedo from [JPL Horizons](#jpl-horizons-ephemeris-spice):
+For bodies on eccentric orbits, the longitude (`--lon`, or `lon` in Python) sets the orbital position at local noon rather than a geographic longitude: `0` puts noon at perihelion and `180` at aphelion. For Mercury these give the hot pole (~700 K) and warm pole (~570 K), respectively:
+
+```bash
+heat1d --planet Mercury --lat 0 --lon 180   # warm pole
+```
+
+Any property can be overridden in the `planet:` section of a YAML config file: `albedo`, `emissivity`, `ks`, `kd`, `rhos`, `rhod`, `H`, `cp0`, `cpCoeff`, `Qb`, `S`, `rAU`, `day`, `year`, `eccentricity`, `obliquity`, and `Lp`. Changing `rAU` rescales the solar flux `S` by the inverse square of distance unless `S` is also given. This also makes bodies whose entries carry only orbital data (Pluto, Triton, etc.) usable by supplying their thermophysical properties; running one without them stops with an error listing what is missing.
+
+Other airless bodies can be modeled with `planet: name: Custom`, which starts from lunar regolith properties, combined with `--use-spice --body-id <ID>` to fetch the body's orbit, rotation period, radius, and albedo from [JPL Horizons](#jpl-horizons-ephemeris-spice):
 
 ```yaml
 # ceres.yaml

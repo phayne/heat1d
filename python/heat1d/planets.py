@@ -116,14 +116,16 @@ Mercury.albedo = 0.119
 Mercury.emissivity = 0.95
 Mercury.S = 9126.6
 Mercury.psurf = 1e-9
+# Thermophysical properties: lunar regolith defaults, set after Moon below
 #
 Mercury.rsm = 57.91e9
 Mercury.rAU = Mercury.rsm / AU
 Mercury.year = 87.969 * 24.0 * 3600.0
 Mercury.eccentricity = 0.2056
 Mercury.day = 4222.6 * 3600.0
-Mercury.obliquity = 0.01
+Mercury.obliquity = np.deg2rad(0.034)  # ~2 arcmin
 Mercury.Lequinox = None
+Mercury.Lp = 0.0
 #
 Mercury.Tsavg = 440.0
 Mercury.Tsmax = 725.0
@@ -322,6 +324,17 @@ Moon.Lp = 0.0
 Moon.Tsavg = 250.0
 Moon.Tsmax = 400.0
 Moon.Tsmin = 95.0
+
+# Mercury thermophysical properties (lunar regolith defaults; Moon
+# must be defined first)
+Mercury.Qb = Moon.Qb
+Mercury.ks = Moon.ks
+Mercury.kd = Moon.kd
+Mercury.rhos = Moon.rhos
+Mercury.rhod = Moon.rhod
+Mercury.H = Moon.H
+Mercury.cp0 = Moon.cp0
+Mercury.cpCoeff = Moon.cpCoeff
 
 # ----------------------------------------------------
 Titan = Planet()
